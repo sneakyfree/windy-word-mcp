@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '0.7.0';
+const SERVER_VERSION = '0.8.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -404,6 +404,84 @@ server.registerTool(
       'when an agent forgot a jobId.',
   },
   wrap(async () => ok(await apiGet('/install/jobs'))),
+);
+
+// ── Archive (v0.8.0) ────────────────────────────────────────────────────
+
+server.registerTool(
+  'list_archive_entries',
+  {
+    description:
+      'List archived recording sessions (the user\'s historical transcripts + linked audio/video). Each ' +
+      'entry has an opaque id (use it with read_archive or delete_archive_entry), date, full transcript ' +
+      'text, wordCount, engine used, and hasAudio / hasVideo booleans. Newest first. Path information is ' +
+      'NOT returned — agents work with the opaque id.',
+    inputSchema: {
+      limit: z.number().int().min(1).max(1000).optional().describe('Cap on entries returned (default 200).'),
+    },
+  },
+  wrap(async ({ limit }) => {
+    const qs = limit !== undefined ? `?limit=${limit}` : '';
+    return ok(await apiGet(`/archive${qs}`));
+  }),
+);
+
+server.registerTool(
+  'get_archive_stats',
+  {
+    description:
+      'Return aggregate stats for the user\'s recording archive: totalFiles, totalSizeMB, days (number of ' +
+      'distinct date directories), audioHours, videoHours, totalWords, totalSessions, totalChars. Cached ' +
+      'server-side for 30s — responses include `cached` + `cacheAgeSec` so the agent knows freshness.',
+  },
+  wrap(async () => ok(await apiGet('/archive/stats'))),
+);
+
+server.registerTool(
+  'read_archive_entry',
+  {
+    description:
+      'Return an archive entry\'s metadata + optionally the base64 audio or video media bytes. The ' +
+      'mediaType parameter selects which stream ("audio" default, or "video"). Pass metadataOnly=true to ' +
+      'skip the base64 payload (responses can be MBs otherwise). Returns { ok, present, mimeType, base64 } ' +
+      'or { ok, present: false } if the requested media isn\'t attached to this entry.',
+    inputSchema: {
+      id: z.string().describe('Archive entry id (from list_archive_entries).'),
+      mediaType: z.enum(['audio', 'video']).optional().describe('Which media stream (default "audio").'),
+      metadataOnly: z.boolean().optional().describe('If true, skip the base64 media payload.'),
+    },
+  },
+  wrap(async ({ id, mediaType, metadataOnly }) => {
+    const body = { id };
+    if (mediaType !== undefined) body.mediaType = mediaType;
+    if (metadataOnly !== undefined) body.metadataOnly = metadataOnly;
+    return ok(await apiPost('/archive/read', body, { timeoutMs: 60 * 1000 }));
+  }),
+);
+
+server.registerTool(
+  'delete_archive_entry',
+  {
+    description:
+      'Tear down an archive entry: removes the transcript .md file + linked audio + linked video, all ' +
+      'path-confined to the archive folder. Irreversible — confirm with the user before calling. Returns ' +
+      'the list of filenames actually deleted.',
+    inputSchema: {
+      id: z.string().describe('Archive entry id (from list_archive_entries).'),
+    },
+  },
+  wrap(async ({ id }) => ok(await apiPost('/archive/delete', { id }))),
+);
+
+server.registerTool(
+  'open_archive_folder',
+  {
+    description:
+      'Pop the archive root directory in the user\'s OS file manager. Side-effect on the desktop ' +
+      '(opens a Files / Finder / Explorer window). Use when the user asks "show me where my recordings ' +
+      'are saved" or similar.',
+  },
+  wrap(async () => ok(await apiPost('/archive/open-folder'))),
 );
 
 // ── Voice clones (v0.7.0) ───────────────────────────────────────────────

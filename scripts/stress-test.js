@@ -78,6 +78,29 @@ results.push({
   summary: noTool.isError ? `rejected missing tool ✓` : 'NOT REJECTED — schema validation gap',
 });
 
+// ── archive (v0.8.0) ──
+const archiveList = await probe('list_archive_entries', { limit: 5 }, {
+  summary: (d) => `${d.count} total entries (${d.entries?.length} returned); newest: "${(d.entries?.[0]?.text || '').slice(0,60).replace(/\n/g,' ')}..."`,
+});
+await probe('get_archive_stats', {}, {
+  summary: (d) => `files=${d.totalFiles} sizeMB=${d.totalSizeMB} days=${d.days} words=${d.totalWords} sessions=${d.totalSessions} cached=${d.cached}`,
+});
+// If we have entries, try reading the metadata of the newest one (no media bytes)
+if (archiveList?.entries?.[0]?.id) {
+  await probe('read_archive_entry', { id: archiveList.entries[0].id, metadataOnly: true }, {
+    summary: (d) => `id=${d.id} mediaType=${d.mediaType} present=${d.present} mimeType=${d.mimeType || 'n/a'}`,
+  });
+}
+// Negative path: bogus id
+await probe('read_archive_entry', { id: 'arc:1900-01-01:000000.md', metadataOnly: true }, {
+  check: (d, isErr) => isErr || d?.ok === false,
+  summary: (d) => `correctly rejected: ${(d?.error || '').slice(0, 60)}`,
+});
+await probe('delete_archive_entry', { id: 'arc:1900-01-01:000000.md' }, {
+  check: (d, isErr) => isErr || d?.ok === false,
+  summary: (d) => `correctly rejected delete: ${(d?.error || '').slice(0, 60)}`,
+});
+
 // ── voice clones (v0.7.0) ──
 await probe('list_voice_clones', {}, { summary: (d) => `count=${d.count} activeId=${d.activeId}` });
 await probe('get_active_voice_clone', {}, { summary: (d) => `active=${d.active ? d.active.id : 'null'}` });
