@@ -78,6 +78,16 @@ results.push({
   summary: noTool.isError ? `rejected missing tool ✓` : 'NOT REJECTED — schema validation gap',
 });
 
+// ── misc utilities (v0.10.0) ──
+await probe('detect_hardware', {}, {
+  check: (d) => typeof d?.cpuCores === 'number' && typeof d?.totalRAM === 'number',
+  summary: (d) => `cpu=${d?.cpuModel?.slice(0,40)} cores=${d?.cpuCores} RAM=${d?.totalRAM}GB gpu=${d?.gpu?.name || 'none'} diskFree=${d?.diskFreeGB || '?'}GB`,
+});
+await probe('get_autostart_status', {}, {
+  check: (d) => typeof d?.enabled === 'boolean',
+  summary: (d) => `platform=${d?.platform} enabled=${d?.enabled}`,
+});
+
 // ── translation + documents (v0.9.0) ──
 // TM round-trip: lookup miss → save → lookup hit (uses a unique-per-run key
 // so we don't pollute Grant's actual TM with test data — clean up after)

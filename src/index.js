@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '0.9.0';
+const SERVER_VERSION = '0.10.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -404,6 +404,45 @@ server.registerTool(
       'when an agent forgot a jobId.',
   },
   wrap(async () => ok(await apiGet('/install/jobs'))),
+);
+
+// ── Misc utilities (v0.10.0) ────────────────────────────────────────────
+
+server.registerTool(
+  'detect_hardware',
+  {
+    description:
+      'Return system hardware info: totalRAM (GB), freeRAM (GB), cpuModel, cpuCores, platform, arch, ' +
+      'gpu (NVIDIA via nvidia-smi on Linux/Windows; Apple Silicon Metal/MPS on macOS arm64; null otherwise), ' +
+      'diskFreeGB (homedir partition). Used by Doctor checks and model-selection decisions — bigger models ' +
+      'need more RAM, GPU-accelerated paths only fire when gpu != null.',
+  },
+  wrap(async () => ok(await apiGet('/hardware'))),
+);
+
+server.registerTool(
+  'get_autostart_status',
+  {
+    description:
+      'Check whether Windy Word is configured to auto-launch on user login. Returns {platform, enabled, ' +
+      'desktopFile?}. Linux checks for ~/.config/autostart/windy-pro.desktop; macOS/Windows use ' +
+      'electron\'s app.getLoginItemSettings(). Pure read — no state change.',
+  },
+  wrap(async () => ok(await apiGet('/autostart'))),
+);
+
+server.registerTool(
+  'set_autostart',
+  {
+    description:
+      'Enable or disable Windy Word\'s auto-launch on user login. Linux writes/removes a .desktop ' +
+      'autostart entry; macOS/Windows toggle via Electron\'s setLoginItemSettings. Returns the resulting ' +
+      'state (enabled boolean) so agents can verify the change took.',
+    inputSchema: {
+      enable: z.boolean().describe('true to enable autostart, false to disable.'),
+    },
+  },
+  wrap(async ({ enable }) => ok(await apiPost('/autostart', { enable }))),
 );
 
 // ── Translation (v0.9.0) ────────────────────────────────────────────────
