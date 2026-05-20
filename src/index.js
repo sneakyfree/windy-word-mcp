@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '0.2.0';
+const SERVER_VERSION = '0.3.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -29,15 +29,32 @@ function err(message) {
   return { isError: true, content: [{ type: 'text', text: message }] };
 }
 
-// Wrap a handler so WindyWordClientError surfaces as a friendly tool error
-// instead of an unhandled rejection (which the SDK would turn into a generic
-// internal error). Anything else still propagates.
+// Wrap a handler so WindyWordClientError surfaces cleanly to the agent.
+//
+// Two cases worth distinguishing:
+//
+//   1. Connection / timeout error (no body)         → return the message text
+//      so the agent sees "Windy Word is not running" or similar.
+//   2. HTTP 4xx with a structured JSON error body   → return the parsed body
+//      so the agent can inspect `ok: false`, `error: "..."`, etc. This is
+//      the normal path for validation failures (set_setting with a bad value,
+//      install_dependency with a non-whitelisted tool that bypassed zod,
+//      describe_setting on an unknown path) — the agent SHOULD be able to
+//      act on those structurally, not parse them out of a string.
 function wrap(handler) {
   return async (args, extra) => {
     try {
       return await handler(args, extra);
     } catch (e) {
-      if (e instanceof WindyWordClientError) return err(e.message);
+      if (e instanceof WindyWordClientError) {
+        if (e.body) {
+          try {
+            const parsed = JSON.parse(e.body);
+            return { isError: true, content: [{ type: 'text', text: JSON.stringify(parsed, null, 2) }] };
+          } catch { /* body wasn't JSON; fall through to plain-text error */ }
+        }
+        return err(e.message);
+      }
       throw e;
     }
   };
@@ -317,7 +334,55 @@ server.registerTool(
   wrap(async () => ok(await apiPost('/install/history/clear'))),
 );
 
-// ── config ───────────────────────────────────────────────────────────────
+// ── settings catalog (the curated, validated surface) ───────────────────
+
+server.registerTool(
+  'list_settings',
+  {
+    description:
+      'List every setting Windy Word exposes as an agent-discoverable, schema-validated path. Returns ' +
+      'each setting\'s dotted path, type, description, allowed values (if enum / range), default, side ' +
+      'effects of changing it, restartRequired flag, sensitivity (writable vs readonly), and the current ' +
+      'live value. Use this as the entry point for any agent setting introspection — it covers the curated ' +
+      'subset of get_config that has a known-safe schema. Paths outside this catalog are accessible only ' +
+      'via the lower-level get_config / set_config tools.',
+  },
+  wrap(async () => ok(await apiGet('/settings/catalog'))),
+);
+
+server.registerTool(
+  'describe_setting',
+  {
+    description:
+      'Return the full catalog entry for one setting (type / allowed values / description / default / ' +
+      'side effects / restartRequired / sensitivity) plus its current value from the live store. ' +
+      'Returns an error if the path is not in the catalog — use get_config for paths outside it.',
+    inputSchema: {
+      path: z.string().describe('Dotted path (e.g. "engine.model", "paste.strategy", "hotkeys.toggleRecording").'),
+    },
+  },
+  wrap(async ({ path }) => ok(await apiGet(`/settings/describe?path=${encodeURIComponent(path)}`))),
+);
+
+server.registerTool(
+  'set_setting',
+  {
+    description:
+      'Validate and apply a setting change against the catalog. Rejects unknown paths, type mismatches, ' +
+      'out-of-range numbers, invalid enum values, malformed accelerators, and attempts to write read-only ' +
+      'settings (e.g. license.*). On success, returns the previous + new value, any side effects that ' +
+      'fired (e.g. "global shortcuts re-registered", "python engine hot-reload sent"), and whether a ' +
+      'restart is required for the change to take full effect. Use set_config to bypass the catalog ' +
+      '(low-level, no validation — for paths outside the catalog).',
+    inputSchema: {
+      path: z.string().describe('Dotted path. Get the catalog from list_settings.'),
+      value: z.unknown().describe('New value. Must match the type the catalog declares for this path.'),
+    },
+  },
+  wrap(async ({ path, value }) => ok(await apiPost('/settings/set', { path, value }))),
+);
+
+// ── config (low-level, no validation — escape hatch) ────────────────────
 
 server.registerTool(
   'get_config',

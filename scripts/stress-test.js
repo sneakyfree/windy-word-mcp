@@ -24,8 +24,11 @@ async function probe(name, args = {}, opts = {}) {
     const r = await client.callTool({ name, arguments: args });
     const data = json(r);
     const ms = Date.now() - t0;
-    const ok = !r.isError && (opts.check ? opts.check(data) : true);
-    results.push({ tool: name, args, ok, ms, summary: opts.summary?.(data) ?? '(no summary)' });
+    // For a tool result, "ok" can mean two different things:
+    //   - opts.check provided  → use it (it gets the parsed data + isError flag)
+    //   - no check             → tool succeeded if isError is false
+    const ok = opts.check ? opts.check(data, r.isError) : !r.isError;
+    results.push({ tool: name, args, ok, ms, summary: opts.summary?.(data, r.isError) ?? '(no summary)' });
     return data;
   } catch (e) {
     results.push({ tool: name, args, ok: false, ms: Date.now() - t0, summary: `THREW: ${e.message}` });
@@ -73,6 +76,41 @@ results.push({
   ok: !!noTool.isError,
   ms: 0,
   summary: noTool.isError ? `rejected missing tool ✓` : 'NOT REJECTED — schema validation gap',
+});
+
+// ── settings catalog (v0.3.0) ──
+await probe('list_settings', {}, { summary: (d) => `${d.count} catalog entries; first 3: ${(d.settings||[]).slice(0,3).map(s=>s.path).join(', ')}` });
+await probe('describe_setting', { path: 'engine.model' }, { summary: (d) => `${d.path} type=${d.type} current=${JSON.stringify(d.currentValue)} enum=${d.enum?.join(',')}` });
+await probe('describe_setting', { path: 'bogus.path' }, {
+  check: (d) => d?.error?.includes('not in catalog'),
+  summary: (d) => d?.error ? `correctly 404'd: ${d.error.slice(0, 60)}` : `should have errored`,
+});
+
+// validate-and-apply happy path: bounce engine.model to 'small' (idempotent — already 'small')
+await probe('set_setting', { path: 'engine.model', value: 'small' }, {
+  summary: (d) => `ok=${d.ok} previous=${JSON.stringify(d.previousValue)} side=${(d.sideEffects||[]).join('; ')}`,
+});
+
+// validation failures (each should return ok=false with a useful error)
+await probe('set_setting', { path: 'engine.model', value: 'tinyy' }, {
+  check: (d) => d?.ok === false && d?.error?.includes('must be one of'),
+  summary: (d) => `correctly rejected: ${d?.error?.slice(0,60)}`,
+});
+await probe('set_setting', { path: 'appearance.opacity', value: 5 }, {
+  check: (d) => d?.ok === false && d?.error?.includes('≤'),
+  summary: (d) => `correctly rejected: ${d?.error?.slice(0,60)}`,
+});
+await probe('set_setting', { path: 'hotkeys.toggleRecording', value: 'lol+bogus' }, {
+  check: (d) => d?.ok === false && d?.error?.toLowerCase().includes('accelerator'),
+  summary: (d) => `correctly rejected: ${d?.error?.slice(0,60)}`,
+});
+await probe('set_setting', { path: 'license.tier', value: 'pro' }, {
+  check: (d) => d?.ok === false && d?.error?.includes('read-only'),
+  summary: (d) => `correctly rejected readonly: ${d?.error?.slice(0,60)}`,
+});
+await probe('set_setting', { path: 'nonexistent.setting', value: true }, {
+  check: (d) => d?.ok === false && d?.error?.includes('unknown'),
+  summary: (d) => `correctly rejected unknown: ${d?.error?.slice(0,60)}`,
 });
 
 // ── set_paste_strategy auto (idempotent, no harm) ──
