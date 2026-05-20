@@ -78,6 +78,15 @@ results.push({
   summary: noTool.isError ? `rejected missing tool ✓` : 'NOT REJECTED — schema validation gap',
 });
 
+// ── transcribe arbitrary audio file (v0.11.0) ──
+// Skip the live LLM call when no archive audio exists. We don't want
+// to spend 30s on a real transcribe in every stress run — confirm the
+// endpoint shape with a non-existent-path negative test.
+await probe('transcribe_audio_file', { path: '/tmp/wwm-stress-nonexistent.wav' }, {
+  check: (d, isErr) => isErr || d?.ok === false,
+  summary: (d) => `correctly rejected missing file: ${(d?.error || '').slice(0, 60)}`,
+});
+
 // ── misc utilities (v0.10.0) ──
 await probe('detect_hardware', {}, {
   check: (d) => typeof d?.cpuCores === 'number' && typeof d?.totalRAM === 'number',

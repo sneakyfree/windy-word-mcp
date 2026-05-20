@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '0.10.0';
+const SERVER_VERSION = '0.11.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -404,6 +404,32 @@ server.registerTool(
       'when an agent forgot a jobId.',
   },
   wrap(async () => ok(await apiGet('/install/jobs'))),
+);
+
+// ── Transcribe arbitrary audio file (v0.11.0) ───────────────────────────
+
+server.registerTool(
+  'transcribe_audio_file',
+  {
+    description:
+      'Transcribe an audio file at a given path. Accepts any format ffmpeg can read (wav, mp3, m4a, ' +
+      'ogg, flac, webm, etc. — auto-detected). Routes through the same Python Whisper engine the ' +
+      'Windy Word desktop app uses for live transcripts (no cold start when the engine is warm — ' +
+      'WebSocket-routed for sub-second hand-off). Returns transcript text + timing diagnostics ' +
+      '(transcribeMs, audioDurationSec, ratio = transcribe/audio, modelUsed). 500MB file cap; ' +
+      '60s ffmpeg ceiling; 120s WS ceiling. Designed for individual files — agents wanting bulk ' +
+      'processing should iterate over a directory and call this per file.',
+    inputSchema: {
+      path: z.string().describe('Absolute or working-dir-relative path to the audio file.'),
+      language: z.string().optional().describe('ISO-639-1 language hint for Whisper (default "en"). Pass "auto" to let the model detect.'),
+    },
+  },
+  wrap(async ({ path: audioPath, language }) => {
+    const body = { path: audioPath };
+    if (language !== undefined) body.language = language;
+    // Generous timeout: 60s ffmpeg + 120s WS + slack — plus user audio could be long.
+    return ok(await apiPost('/transcribe-file', body, { timeoutMs: 4 * 60 * 1000 }));
+  }),
 );
 
 // ── Misc utilities (v0.10.0) ────────────────────────────────────────────
