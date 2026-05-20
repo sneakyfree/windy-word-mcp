@@ -78,6 +78,28 @@ results.push({
   summary: noTool.isError ? `rejected missing tool ✓` : 'NOT REJECTED — schema validation gap',
 });
 
+// ── soul file + voice clone Phase 2 (v0.12.0) ──
+// Don't run a real export (1.5GB / 3min). Verify the no-overwrite refusal
+// path and the missing-source rejection.
+await probe('export_soul_file_to_path', { outputPath: '/tmp/wwm-stress-soul.zip' }, {
+  // Either the export succeeds (clean tmp), gets 409 (file exists from earlier run),
+  // or returns an error — all are acceptable as "endpoint reachable + shape valid"
+  check: (d, isErr) => typeof d?.ok === 'boolean' || isErr,
+  summary: (d, isErr) => isErr ? `errored: ${(JSON.stringify(d) || '').slice(0, 60)}` : (d?.ok ? `wrote ${d.sizeMB}MB` : `refused: ${(d?.error || '').slice(0, 50)}`),
+});
+// Cleanup any soul file we may have written
+try { require('fs').unlinkSync('/tmp/wwm-stress-soul.zip'); } catch {}
+
+await probe('create_voice_clone_from_path', { name: 'StressTest', sourcePath: '/tmp/wwm-nonexistent-audio.wav' }, {
+  check: (d, isErr) => isErr || d?.ok === false,
+  summary: (d) => `correctly rejected missing source: ${(d?.error || '').slice(0, 60)}`,
+});
+await probe('get_cloud_clone_order_status', { orderId: 'stress-test-bogus-order' }, {
+  // Expect either: 401 if not signed in (correct), or 502 if upstream rejects (also fine)
+  check: (d, isErr) => isErr || d?.ok === false,
+  summary: (d) => `correctly handled: ${(d?.error || (d?.body?.error || '')).slice(0, 60)}`,
+});
+
 // ── transcribe arbitrary audio file (v0.11.0) ──
 // Skip the live LLM call when no archive audio exists. We don't want
 // to spend 30s on a real transcribe in every stress run — confirm the

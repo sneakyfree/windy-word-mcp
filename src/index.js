@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '0.11.0';
+const SERVER_VERSION = '0.12.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -406,6 +406,32 @@ server.registerTool(
   wrap(async () => ok(await apiGet('/install/jobs'))),
 );
 
+// ── Soul file (v0.12.0) — Forma Animae export ───────────────────────────
+
+server.registerTool(
+  'export_soul_file_to_path',
+  {
+    description:
+      'Export the user\'s entire Windy Word archive (audio + video + transcripts) as a single zip file ' +
+      'at the given path. The Forma Animae artifact — Grant\'s exportable "soul" for use with the Windy ' +
+      'Clone digital-twin pipeline or as a portable backup. Includes a manifest.json with stats (file ' +
+      'counts, word counts, date range). Refuses to overwrite existing files unless overwrite=true. ' +
+      'Creates parent directories as needed. Pairs with the existing export-soul-file IPC the renderer ' +
+      'uses via the Soul File button (which opens a save dialog) — this is the path-based variant for ' +
+      'agent-driven exports.',
+    inputSchema: {
+      outputPath: z.string().describe('Destination .zip path (e.g. "/home/user/Documents/my-soul-2026-05.zip").'),
+      overwrite: z.boolean().optional().describe('If true, replace existing file. Default false.'),
+    },
+  },
+  wrap(async ({ outputPath, overwrite }) => {
+    const body = { outputPath };
+    if (overwrite !== undefined) body.overwrite = overwrite;
+    // Generous timeout — large archives can take a minute or two to zip.
+    return ok(await apiPost('/soul-file/export', body, { timeoutMs: 5 * 60 * 1000 }));
+  }),
+);
+
 // ── Transcribe arbitrary audio file (v0.11.0) ───────────────────────────
 
 server.registerTool(
@@ -734,6 +760,44 @@ server.registerTool(
     if (metadataOnly !== undefined) body.metadataOnly = metadataOnly;
     return ok(await apiPost('/voice-clones/preview', body, { timeoutMs: 30 * 1000 }));
   }),
+);
+
+server.registerTool(
+  'create_voice_clone_from_path',
+  {
+    description:
+      'Create a voice clone from an audio file on disk. Copies the source file into Windy Word\'s ' +
+      'voice-samples directory under a fresh UUID, registers the clone in the local DB, and returns ' +
+      'the new clone\'s metadata (with hasAudio=true). Supported audio extensions: .webm, .wav, .mp3, ' +
+      '.ogg, .m4a, .flac. Source file must exist and be readable; the copy itself is path-confined to ' +
+      'Windy\'s voice-samples dir. Use list_voice_clones afterward to see it and set_active_voice_clone ' +
+      'to activate.',
+    inputSchema: {
+      name: z.string().describe('Human-readable name for the clone (e.g. "My Voice 2026-05").'),
+      sourcePath: z.string().describe('Path to the source audio file.'),
+      durationSec: z.number().optional().describe('Audio duration in seconds (if known). Optional metadata.'),
+    },
+  },
+  wrap(async ({ name, sourcePath, durationSec }) => {
+    const body = { name, sourcePath };
+    if (durationSec !== undefined) body.durationSec = durationSec;
+    return ok(await apiPost('/voice-clones/create', body, { timeoutMs: 30 * 1000 }));
+  }),
+);
+
+server.registerTool(
+  'get_cloud_clone_order_status',
+  {
+    description:
+      'Check the status of a Windy Clone cloud-training order — used after submit_voice_clone_to_cloud ' +
+      '(Phase 2 — not yet exposed as MCP) to poll for ElevenLabs training completion. Requires the user ' +
+      'to be signed in to their Windy account; returns a clean 401-shape error if not. Returns the raw ' +
+      'order body from the Windy Clone API.',
+    inputSchema: {
+      orderId: z.string().describe('Order id returned from a previous submit_voice_clone_to_cloud call.'),
+    },
+  },
+  wrap(async ({ orderId }) => ok(await apiPost('/voice-clones/cloud-order-status', { orderId }))),
 );
 
 server.registerTool(
