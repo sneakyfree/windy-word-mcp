@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '0.3.0';
+const SERVER_VERSION = '0.4.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -292,8 +292,8 @@ server.registerTool(
       'executing it.',
     inputSchema: {
       tool: z
-        .enum(['wtype', 'ydotool', 'wl-clipboard', 'xdotool'])
-        .describe('Which tool to install. Constrained to the whitelist.'),
+        .enum(['wtype', 'ydotool', 'wl-clipboard', 'xdotool', 'cliclick', 'ffmpeg'])
+        .describe('Which tool to install. Constrained to the whitelist. Note: not every tool is installable on every OS (cliclick is macOS-only, the Wayland tools are Linux-only). Use list_installable_dependencies to see what works on the current machine.'),
       dryRun: z
         .boolean()
         .optional()
@@ -332,6 +332,82 @@ server.registerTool(
     description: 'Wipe the in-memory install audit log. Useful between test runs.',
   },
   wrap(async () => ok(await apiPost('/install/history/clear'))),
+);
+
+server.registerTool(
+  'install_dependency_async',
+  {
+    description:
+      'Fire-and-poll variant of install_dependency. Returns a jobId immediately and runs the install in ' +
+      'the background. Use get_install_status to check progress. Useful when the install might take >10 ' +
+      'minutes (e.g., compiling from source, large package downloads on slow networks) or when the agent ' +
+      'wants to surface a "still installing…" UI without holding a connection open. The whitelist + ' +
+      'platform constraints + polkit/sudo flow are identical to install_dependency.',
+    inputSchema: {
+      tool: z
+        .enum(['wtype', 'ydotool', 'wl-clipboard', 'xdotool', 'cliclick', 'ffmpeg'])
+        .describe('Which tool to install.'),
+      dryRun: z.boolean().optional().describe('If true, return the install command without actually running it.'),
+    },
+  },
+  wrap(async ({ tool, dryRun }) => {
+    const body = { tool };
+    if (dryRun !== undefined) body.dryRun = dryRun;
+    return ok(await apiPost('/install/start', body));
+  }),
+);
+
+server.registerTool(
+  'get_install_status',
+  {
+    description:
+      'Return the current state of an async install job started by install_dependency_async. Status is ' +
+      '"running" (still in flight) or "completed" (finished — check result.ok for success). If the job ' +
+      'is not found (FIFO-evicted after 50 jobs, or wrong jobId), returns status="unknown".',
+    inputSchema: {
+      jobId: z.string().describe('Job id returned by install_dependency_async.'),
+    },
+  },
+  wrap(async ({ jobId }) => ok(await apiGet(`/install/status?jobId=${encodeURIComponent(jobId)}`))),
+);
+
+server.registerTool(
+  'list_install_jobs',
+  {
+    description:
+      'List all install jobs currently in memory — both running and recently completed. Useful for dashboards or ' +
+      'when an agent forgot a jobId.',
+  },
+  wrap(async () => ok(await apiGet('/install/jobs'))),
+);
+
+// ── Windy Doctor (local diagnostics) ────────────────────────────────────
+
+server.registerTool(
+  'run_diagnostics',
+  {
+    description:
+      'Run the local Windy Doctor check battery and return a structured report: overall health ' +
+      '(healthy / degraded / unhealthy), per-check status (ok / warning / error / not_applicable), ' +
+      'severity, what was found, and (for non-ok findings) an actionable remediation step that often ' +
+      'references the specific MCP tool to call next (e.g., "install_dependency({tool: \\"wtype\\"})"). ' +
+      'Covers: paste-stack tooling presence, /dev/uinput permissions, ydotoold daemon health, polkit ' +
+      'rule installation, Python transcription engine liveness, Mutter hotkey collision. No system ' +
+      'mutation — pure read. Use this as the starting point for any "why is paste broken / why is ' +
+      'transcription failing" agent flow.',
+  },
+  wrap(async () => ok(await apiGet('/doctor/diagnose'))),
+);
+
+server.registerTool(
+  'list_diagnostic_checks',
+  {
+    description:
+      'List the catalog of Windy Doctor diagnostic checks without running them. Returns each check\'s ' +
+      'name, description, and whether it applies to this platform. Useful for agent introspection — ' +
+      'understanding what the doctor knows how to look at before kicking off a diagnostic run.',
+  },
+  wrap(async () => ok(await apiGet('/doctor/checks'))),
 );
 
 // ── settings catalog (the curated, validated surface) ───────────────────

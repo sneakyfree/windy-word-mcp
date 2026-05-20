@@ -113,6 +113,33 @@ await probe('set_setting', { path: 'nonexistent.setting', value: true }, {
   summary: (d) => `correctly rejected unknown: ${d?.error?.slice(0,60)}`,
 });
 
+// ── async install (v0.4.0) ──
+const asyncJob = await probe('install_dependency_async', { tool: 'wtype' }, { summary: (d) => `jobId=${d.jobId} status=${d.status}` });
+if (asyncJob?.jobId) {
+  await new Promise((r) => setTimeout(r, 50));
+  await probe('get_install_status', { jobId: asyncJob.jobId }, { summary: (d) => `status=${d.status} result.ok=${d.result?.ok}` });
+}
+await probe('list_install_jobs', {}, { summary: (d) => `${d.jobs?.length} jobs in memory` });
+await probe('get_install_status', { jobId: 'install-9999999-fake' }, {
+  check: (d, isErr) => isErr || d?.error?.includes('not found'),
+  summary: (d, isErr) => isErr ? 'correctly 404\'d on unknown jobId' : (d?.error || 'NOT REJECTED'),
+});
+
+// ── doctor (v0.4.0) ──
+await probe('list_diagnostic_checks', {}, { summary: (d) => `${d.checks?.length} checks defined; ${d.checks?.filter(c => c.appliesToCurrentPlatform).length} apply to this platform` });
+const diag = await probe('run_diagnostics', {}, { summary: (d) => `overall=${d.overall}; counts=${JSON.stringify(d.counts)}; actionable=${d.actionable?.length}` });
+
+// ── cross-platform whitelist sanity (v0.4.0) ──
+await probe('list_installable_dependencies', {}, {
+  check: (d) => d.tools && d.tools.length >= 5,
+  summary: (d) => `os=${d.os} pm=${d.packageManager} tools=${(d.tools||[]).map(t=>t.name).join(',')}`,
+});
+await probe('install_dependency', { tool: 'cliclick', dryRun: true }, {
+  // cliclick is macOS-only — Linux should reject as "not installable on linux/fedora"
+  check: (d, isErr) => isErr || d?.ok === false,
+  summary: (d, isErr) => isErr ? `correctly rejected: ${d?.error || ''}`.slice(0,80) : `unexpected ok=${d?.ok}`,
+});
+
 // ── set_paste_strategy auto (idempotent, no harm) ──
 await probe('set_paste_strategy', { strategy: 'auto' }, { summary: (d) => `set ok=${d.ok}, strategy=${d.strategy}` });
 
