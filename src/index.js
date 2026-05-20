@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '0.1.1';
+const SERVER_VERSION = '0.2.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -244,6 +244,77 @@ server.registerTool(
       'average ratio (used to decide when to climb or descend the ladder).',
   },
   wrap(async () => ok(await apiGet('/windytune/state'))),
+);
+
+// ── install_dependency (Linux-only v0) ───────────────────────────────────
+
+server.registerTool(
+  'list_installable_dependencies',
+  {
+    description:
+      'List the whitelisted system tools that Windy Word can install on this machine to ' +
+      'expand its capabilities (e.g. wtype for instant Wayland paste). Returns supported ' +
+      'platform check + distro detection + the resolved install command per tool. Always ' +
+      'safe to call (no system mutation). v0 supports Linux only — returns supported=false ' +
+      'with a friendly explanation on macOS/Windows.',
+  },
+  wrap(async () => ok(await apiGet('/install/capabilities'))),
+);
+
+server.registerTool(
+  'install_dependency',
+  {
+    description:
+      'Install a missing system tool via the distro package manager wrapped in pkexec. ' +
+      'WARNING: this triggers a graphical sudo (polkit) prompt that the user must approve ' +
+      'interactively — do not call without telling the user a prompt will appear. The tool ' +
+      'must be in Windy Word\'s whitelist: wtype, ydotool, wl-clipboard, xdotool. Linux only. ' +
+      'After a successful install of wtype, re-check list_paste_strategies — wtype will flip ' +
+      'to availableOnThisMachine=true and become first-pick in the resolved chain (paste ' +
+      'becomes instant on Wayland-native targets). Use dryRun=true to see the command without ' +
+      'executing it.',
+    inputSchema: {
+      tool: z
+        .enum(['wtype', 'ydotool', 'wl-clipboard', 'xdotool'])
+        .describe('Which tool to install. Constrained to the whitelist.'),
+      dryRun: z
+        .boolean()
+        .optional()
+        .describe('If true, return the install command that WOULD run without executing it.'),
+    },
+  },
+  wrap(async ({ tool, dryRun }) => {
+    const body = { tool };
+    if (dryRun !== undefined) body.dryRun = dryRun;
+    // dnf/apt install can easily take >5s for metadata refresh + download. Use
+    // a 10-minute ceiling that matches the windy-pro side's INSTALL_TIMEOUT_MS.
+    return ok(await apiPost('/install', body, { timeoutMs: 10 * 60 * 1000 }));
+  }),
+);
+
+server.registerTool(
+  'get_install_history',
+  {
+    description:
+      'Return the audit log of recent install_dependency attempts on this machine (timestamp, ' +
+      'tool, package, exact command, exit code, elapsed ms, whether the tool is on PATH after, ' +
+      'stdout/stderr tails). In-memory; resets when Windy Word restarts.',
+    inputSchema: {
+      limit: z.number().int().min(1).max(100).optional().describe('Max entries (default 20).'),
+    },
+  },
+  wrap(async ({ limit }) => {
+    const qs = limit !== undefined ? `?limit=${limit}` : '';
+    return ok(await apiGet(`/install/history${qs}`));
+  }),
+);
+
+server.registerTool(
+  'clear_install_history',
+  {
+    description: 'Wipe the in-memory install audit log. Useful between test runs.',
+  },
+  wrap(async () => ok(await apiPost('/install/history/clear'))),
 );
 
 // ── config ───────────────────────────────────────────────────────────────

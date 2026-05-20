@@ -27,13 +27,14 @@ export class WindyWordClientError extends Error {
   }
 }
 
-async function request(method, path, body) {
+async function request(method, path, body, opts = {}) {
   const url = `${BASE_URL}${path}`;
   const init = { method, headers: { 'content-type': 'application/json' } };
   if (body !== undefined) init.body = JSON.stringify(body);
 
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   init.signal = controller.signal;
 
   let res;
@@ -47,7 +48,7 @@ async function request(method, path, body) {
     }
     if (err.name === 'AbortError') {
       throw new WindyWordClientError(
-        `Windy Word request to ${path} timed out after ${DEFAULT_TIMEOUT_MS}ms.`,
+        `Windy Word request to ${path} timed out after ${timeoutMs}ms.`,
         { cause: err },
       );
     }
@@ -72,8 +73,8 @@ async function request(method, path, body) {
   }
 }
 
-export const apiGet = (path) => request('GET', path);
-export const apiPost = (path, body) => request('POST', path, body ?? {});
+export const apiGet = (path, opts) => request('GET', path, undefined, opts);
+export const apiPost = (path, body, opts) => request('POST', path, body ?? {}, opts);
 
 export function describeServer() {
   return { baseUrl: BASE_URL, timeoutMs: DEFAULT_TIMEOUT_MS };
