@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '1.0.0';
+const SERVER_VERSION = '1.1.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -357,6 +357,29 @@ server.registerTool(
     description: 'Wipe the in-memory install audit log. Useful between test runs.',
   },
   wrap(async () => ok(await apiPost('/install/history/clear'))),
+);
+
+server.registerTool(
+  'setup_install_polkit_rule',
+  {
+    description:
+      'Install or remove the Linux polkit auto-approve rule that lets install_dependency run without ' +
+      'prompts. CRITICAL ONE-TIME SETUP for the agent-native install flow on a fresh machine: triggers ' +
+      'a single pkexec password prompt for THIS call (the user types their password once); thereafter ' +
+      'every install_dependency call for a whitelisted tool (wtype/ydotool/wl-clipboard/xdotool/ffmpeg) ' +
+      'runs prompt-free. Uses subject.active so the rule applies to any logged-in user on the machine ' +
+      '(not hardcoded to a single account). Linux only — returns 501 on macOS/Windows.\n\n' +
+      'Recommended flow:\n' +
+      '  1. run_diagnostics — see if install_polkit_rule check is warning\n' +
+      '  2. setup_install_polkit_rule({enable: true}) — user types password once\n' +
+      '  3. install_dependency({tool: "wtype"}) — silent install, no prompt\n\n' +
+      'Pass enable=false to remove the rule (also triggers a polkit prompt).',
+    inputSchema: {
+      enable: z.boolean().describe('true to install the rule, false to remove it.'),
+    },
+  },
+  // Generous timeout — pkexec prompt may sit waiting for the user.
+  wrap(async ({ enable }) => ok(await apiPost('/install/polkit-rule', { enable }, { timeoutMs: 90 * 1000 }))),
 );
 
 server.registerTool(

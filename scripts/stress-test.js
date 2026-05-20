@@ -246,6 +246,15 @@ await probe('set_setting', { path: 'nonexistent.setting', value: true }, {
   summary: (d) => `correctly rejected unknown: ${d?.error?.slice(0,60)}`,
 });
 
+// ── polkit rule bootstrap (v1.1.0) ──
+// Skip a live install/remove — that requires a pkexec prompt the user
+// must accept. The endpoint surface (501 for non-Linux, 400 for bad
+// args) is what we verify.
+await probe('setup_install_polkit_rule', { enable: 'not-a-bool' }, {
+  check: (d, isErr) => isErr || d?.ok === false,
+  summary: (d) => `correctly rejected bad arg: ${(d?.error || '').slice(0, 60)}`,
+});
+
 // ── async install (v0.4.0) ──
 const asyncJob = await probe('install_dependency_async', { tool: 'wtype' }, { summary: (d) => `jobId=${d.jobId} status=${d.status}` });
 if (asyncJob?.jobId) {
