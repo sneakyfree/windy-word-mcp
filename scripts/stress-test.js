@@ -78,6 +78,44 @@ results.push({
   summary: noTool.isError ? `rejected missing tool ✓` : 'NOT REJECTED — schema validation gap',
 });
 
+// ── translation + documents (v0.9.0) ──
+// TM round-trip: lookup miss → save → lookup hit (uses a unique-per-run key
+// so we don't pollute Grant's actual TM with test data — clean up after)
+const tmKey = `stress-test-${Date.now()}`;
+await probe('lookup_translation_memory', { text: tmKey, sourceLang: 'en', targetLang: 'es' }, {
+  check: (d) => d?.ok === true && d?.match === null,
+  summary: (d) => `lookup miss as expected, match=${d?.match}`,
+});
+await probe('save_translation_memory', { source: tmKey, target: `${tmKey}-translated`, sourceLang: 'en', targetLang: 'es' }, {
+  summary: (d) => `save ok=${d?.ok} updated=${d?.updated}`,
+});
+await probe('lookup_translation_memory', { text: tmKey, sourceLang: 'en', targetLang: 'es' }, {
+  check: (d) => d?.ok === true && d?.match?.translation === `${tmKey}-translated`,
+  summary: (d) => `lookup hit translation=${d?.match?.translation} hits=${d?.match?.hits}`,
+});
+await probe('get_translation_memory_stats', {}, {
+  summary: (d) => `total=${d?.totalEntries} pairs=${d?.topPairs?.length} recent=${d?.recentEntries?.length}`,
+});
+
+// Document extraction round-trip
+const docPath = `/tmp/wwm-stress-doc-${Date.now()}.md`;
+const docContent = '# Stress test document\n\nThis is a *test* doc for `extract_document_text`.';
+await probe('save_text_file', { path: docPath, content: docContent }, {
+  check: (d) => d?.ok === true && d?.bytesWritten > 0,
+  summary: (d) => `wrote ${d?.bytesWritten} bytes to ${d?.path}`,
+});
+await probe('extract_document_text', { path: docPath }, {
+  check: (d) => d?.ok === true && d?.text === docContent,
+  summary: (d) => `extracted ${d?.textLength} chars from ${d?.ext} file`,
+});
+// Negative path: overwrite without flag should refuse
+await probe('save_text_file', { path: docPath, content: 'should refuse' }, {
+  check: (d, isErr) => isErr || d?.ok === false,
+  summary: (d) => `correctly refused overwrite: ${(d?.error || '').slice(0, 60)}`,
+});
+// Cleanup
+try { require('fs').unlinkSync(docPath); } catch {}
+
 // ── archive (v0.8.0) ──
 const archiveList = await probe('list_archive_entries', { limit: 5 }, {
   summary: (d) => `${d.count} total entries (${d.entries?.length} returned); newest: "${(d.entries?.[0]?.text || '').slice(0,60).replace(/\n/g,' ')}..."`,

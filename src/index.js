@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '0.8.0';
+const SERVER_VERSION = '0.9.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -404,6 +404,123 @@ server.registerTool(
       'when an agent forgot a jobId.',
   },
   wrap(async () => ok(await apiGet('/install/jobs'))),
+);
+
+// ── Translation (v0.9.0) ────────────────────────────────────────────────
+
+server.registerTool(
+  'translate_text',
+  {
+    description:
+      'Translate text to a target language. Tries the local translation-memory cache first (instant + ' +
+      'free); on miss, calls Groq (preferred) or OpenAI via Windy Word\'s configured key. The TM cache ' +
+      'auto-populates from successful calls so repeat translations are free. Source language defaults to ' +
+      '"auto" (model detects); only concrete source-lang calls hit the TM. Returns {ok, translation, ' +
+      'fromCache, sourceLang, targetLang, engine}.',
+    inputSchema: {
+      text: z.string().describe('Text to translate.'),
+      targetLang: z.string().describe('Target language code (e.g. "es", "fr", "ja").'),
+      sourceLang: z.string().optional().describe('Source language code or "auto" (default).'),
+    },
+  },
+  wrap(async ({ text, targetLang, sourceLang }) => {
+    const body = { text, targetLang };
+    if (sourceLang) body.sourceLang = sourceLang;
+    return ok(await apiPost('/translate', body, { timeoutMs: 30 * 1000 }));
+  }),
+);
+
+server.registerTool(
+  'lookup_translation_memory',
+  {
+    description:
+      'Look up a (text, sourceLang, targetLang) tuple in the local translation-memory cache. Returns ' +
+      '{ok, match: {translation, hits} | null}. No external API call — pure local SQLite query.',
+    inputSchema: {
+      text: z.string().describe('Source text to look up.'),
+      sourceLang: z.string().describe('Source language code.'),
+      targetLang: z.string().describe('Target language code.'),
+    },
+  },
+  wrap(async ({ text, sourceLang, targetLang }) => ok(await apiPost('/translation-memory/lookup', { text, sourceLang, targetLang }))),
+);
+
+server.registerTool(
+  'save_translation_memory',
+  {
+    description:
+      'Store a (source, target, sourceLang, targetLang) tuple in the TM cache. Useful when an agent has ' +
+      'a known-good translation it wants future lookups to find without re-calling the LLM. Upserts on ' +
+      'duplicate keys (increments the hits counter).',
+    inputSchema: {
+      source: z.string().describe('Source text.'),
+      target: z.string().describe('Target translation.'),
+      sourceLang: z.string().describe('Source language code.'),
+      targetLang: z.string().describe('Target language code.'),
+    },
+  },
+  wrap(async ({ source, target, sourceLang, targetLang }) => ok(await apiPost('/translation-memory/save', { source, target, sourceLang, targetLang }))),
+);
+
+server.registerTool(
+  'get_translation_memory_stats',
+  {
+    description:
+      'Return TM cache stats: totalEntries, topPairs (top 10 source→target language pairs by count), ' +
+      'recentEntries (last 50 by updated_at).',
+  },
+  wrap(async () => ok(await apiGet('/translation-memory/stats'))),
+);
+
+server.registerTool(
+  'clear_translation_memory',
+  {
+    description:
+      'Wipe the entire translation-memory cache. Destructive — confirm with the user before calling.',
+  },
+  wrap(async () => ok(await apiPost('/translation-memory/clear'))),
+);
+
+// ── Documents (v0.9.0) ──────────────────────────────────────────────────
+
+server.registerTool(
+  'extract_document_text',
+  {
+    description:
+      'Extract plain text from a document file at a given path. Supports .txt / .md / .csv (read as ' +
+      'UTF-8), .html (strip tags), .pdf (regex scrape — best-effort, may return [PDF text extraction ' +
+      'yielded nothing] for image-only PDFs), .docx (xml-strip). Default size cap 5MB; override via ' +
+      'maxBytes (up to 20MB). Returns {ok, path, ext, sizeBytes, textLength, text}.',
+    inputSchema: {
+      path: z.string().describe('Absolute or working-dir-relative file path.'),
+      maxBytes: z.number().int().min(1024).max(20 * 1024 * 1024).optional().describe('Max file size to attempt (default 5MB).'),
+    },
+  },
+  wrap(async ({ path: filePath, maxBytes }) => {
+    const body = { path: filePath };
+    if (maxBytes !== undefined) body.maxBytes = maxBytes;
+    return ok(await apiPost('/docs/extract', body, { timeoutMs: 30 * 1000 }));
+  }),
+);
+
+server.registerTool(
+  'save_text_file',
+  {
+    description:
+      'Write text content to a file at a given path. Default: refuses to overwrite existing files (returns ' +
+      'a 409-shaped error with the existing file size). Pass overwrite=true to replace. Creates parent ' +
+      'directories as needed. Returns {ok, path, bytesWritten}.',
+    inputSchema: {
+      path: z.string().describe('Absolute or working-dir-relative target path.'),
+      content: z.union([z.string(), z.record(z.string(), z.unknown())]).describe('String content, or an object (will be JSON-stringified).'),
+      overwrite: z.boolean().optional().describe('If true, replace existing file. Default false.'),
+    },
+  },
+  wrap(async ({ path: filePath, content, overwrite }) => {
+    const body = { path: filePath, content };
+    if (overwrite !== undefined) body.overwrite = overwrite;
+    return ok(await apiPost('/docs/save', body));
+  }),
 );
 
 // ── Archive (v0.8.0) ────────────────────────────────────────────────────
