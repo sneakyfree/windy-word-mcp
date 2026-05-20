@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '1.2.0';
+const SERVER_VERSION = '1.3.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -497,6 +497,83 @@ server.registerTool(
       'in windy-pro to expose live state + writes.',
   },
   wrap(async () => ok(await apiGet('/sound-effects/state'))),
+);
+
+server.registerTool(
+  'set_sound_hook',
+  {
+    description:
+      'Configure a single sound-effect hook stage. Hooks are the 6 lifecycle points where Windy Word ' +
+      'plays sounds: start (🎬 begin recording), during (🎤 mid-recording chirps), stop (⏹️ end ' +
+      'recording), process (⏳ Whisper transcribing), warning (⚠️ approaching session limit), paste ' +
+      '(📋 transcript injected). Each hook has enabled (boolean) + volume (0-100 int). Pass any combo ' +
+      'of those args — omitted ones are unchanged. Routes through the renderer EffectsEngine and ' +
+      'persists via _saveSettings to localStorage.',
+    inputSchema: {
+      hook: z.enum(['start', 'during', 'stop', 'process', 'warning', 'paste']).describe('Which of the 6 hook stages.'),
+      enabled: z.boolean().optional().describe('Mute (false) / unmute (true) this stage.'),
+      volume: z.number().int().min(0).max(100).optional().describe('Per-stage volume 0-100. Multiplies with master SFX volume.'),
+    },
+  },
+  wrap(async ({ hook, enabled, volume }) => {
+    const body = { hook };
+    if (enabled !== undefined) body.enabled = enabled;
+    if (volume !== undefined) body.volume = volume;
+    return ok(await apiPost('/sound-effects/hook', body));
+  }),
+);
+
+server.registerTool(
+  'set_active_sound_pack',
+  {
+    description:
+      'Switch the active sound pack. Pack ids come from list_sound_effect_packs — typical built-ins are ' +
+      '"_silent", "classic-beep", "soft-chime". Affects all 6 hook stages unless individually overridden ' +
+      'via custom-sound assignments. Persisted via EffectsEngine _saveSettings.',
+    inputSchema: {
+      packId: z.string().describe('Pack id (e.g. "classic-beep", "_silent").'),
+    },
+  },
+  wrap(async ({ packId }) => ok(await apiPost('/sound-effects/active-pack', { packId }))),
+);
+
+server.registerTool(
+  'set_master_sfx_volume',
+  {
+    description:
+      'Set the master SFX volume (0-100). Affects every hook stage as a multiplier on per-stage volumes. ' +
+      'Persists immediately to localStorage windy_sfxVolume and applies to the live EffectsEngine.sound ' +
+      'master.',
+    inputSchema: {
+      volume: z.number().int().min(0).max(100).describe('Master SFX volume 0-100. 0 = silent, 100 = full.'),
+    },
+  },
+  wrap(async ({ volume }) => ok(await apiPost('/sound-effects/master-volume', { volume }))),
+);
+
+server.registerTool(
+  'set_sound_effect_mode',
+  {
+    description:
+      'Switch the EffectsEngine mode: "silent" (no sounds), "classic" (built-in beeps), "surprise" ' +
+      '(random selection from a category), "custom" (per-hook user-assigned sounds), "pack" (active ' +
+      'pack drives everything). Persisted via _saveSettings.',
+    inputSchema: {
+      mode: z.enum(['silent', 'classic', 'surprise', 'custom', 'pack']),
+    },
+  },
+  wrap(async ({ mode }) => ok(await apiPost('/sound-effects/mode', { mode }))),
+);
+
+server.registerTool(
+  'get_widget_state',
+  {
+    description:
+      'Return mini-widget (tornado) runtime state via the renderer bridge: whether the WidgetEngine is ' +
+      'present, whether the widget is currently visible, and the localStorage tornadoSize value. ' +
+      'Complements the catalog-driven set_setting path for tornadoX/tornadoY/tornadoSize/widgetSettings.',
+  },
+  wrap(async () => ok(await apiGet('/widget/state'))),
 );
 
 server.registerTool(

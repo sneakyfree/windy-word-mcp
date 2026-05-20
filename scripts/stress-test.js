@@ -246,17 +246,29 @@ await probe('set_setting', { path: 'nonexistent.setting', value: true }, {
   summary: (d) => `correctly rejected unknown: ${d?.error?.slice(0,60)}`,
 });
 
-// ── sound-effects discovery (v1.2.0 — Phase 1 placeholder) ──
-// The renderer-side localStorage bridge currently times out (Electron context
-// isolation). Tools are forward-compat placeholders — they MUST return a
-// structured shape (ok flag), not crash.
+// ── sound-effects + widget bridge (v1.3.0) ──
+// Renderer IPC bridge is wired (preload + app.js initAgentBridge + main.js
+// _callAgentBridge). Endpoints return structured responses whether the
+// renderer dispatcher is armed yet or not. Tests verify the SHAPE — actual
+// live values only land when the renderer has finished init.
 await probe('get_sound_effect_state', {}, {
-  check: (d) => Array.isArray(d?.hookStages) && d.hookStages.length === 6,
-  summary: (d) => `hookStages=${d?.hookStages?.length}/6, rendererReadable=${d?.rendererReadable} (Phase 1 placeholder until renderer IPC bridge)`,
+  check: (d) => typeof d?.ok === 'boolean',
+  summary: (d) => d?.ok
+    ? `bridge live; activePack=${d?.state?.activePackId} mode=${d?.state?.mode} sfxMaster=${d?.state?.sfxMasterVolume}`
+    : `bridge not ready: ${(d?.error || '').slice(0, 60)}`,
 });
 await probe('list_sound_effect_packs', {}, {
-  check: (d) => typeof d?.ok === 'boolean' && (Array.isArray(d?.packs) || d?.ok === false),
-  summary: (d) => `source=${d?.source || 'error'} count=${d?.count || 0} (Phase 1 placeholder)`,
+  check: (d) => typeof d?.ok === 'boolean',
+  summary: (d) => d?.ok ? `${d.count} packs; active=${d.activePackId}` : `bridge not ready: ${(d?.error || '').slice(0, 60)}`,
+});
+await probe('get_widget_state', {}, {
+  check: (d) => typeof d?.ok === 'boolean',
+  summary: (d) => d?.ok ? `widgetEnginePresent=${d?.state?.widgetEnginePresent}` : `bridge not ready: ${(d?.error || '').slice(0, 60)}`,
+});
+// Negative path on the write side — bad enum should be caught at the zod layer
+await probe('set_sound_hook', { hook: 'nonexistent-stage' }, {
+  check: (d, isErr) => isErr,
+  summary: (d, isErr) => isErr ? `correctly rejected unknown hook at zod` : `should have rejected`,
 });
 
 // ── polkit rule bootstrap (v1.1.0) ──
