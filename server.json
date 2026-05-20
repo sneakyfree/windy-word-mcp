@@ -1,0 +1,40 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.sneakyfree/windy-word-mcp",
+  "title": "Windy Word",
+  "description": "MCP server exposing Windy Word's agent-control surface (paste strategies, hotkeys, transcription models, config, actions) as 20 tools wrapping the local HTTP API on 127.0.0.1:18765.",
+  "websiteUrl": "https://windyword.ai",
+  "repository": {
+    "url": "https://github.com/sneakyfree/windy-word-mcp",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "windy-word-mcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "WINDY_WORD_MCP_HOST",
+          "description": "Host the Windy Word control server is bound to.",
+          "default": "127.0.0.1"
+        },
+        {
+          "name": "WINDY_WORD_MCP_PORT",
+          "description": "Control-server port.",
+          "default": "18765"
+        },
+        {
+          "name": "WINDY_WORD_MCP_TIMEOUT_MS",
+          "description": "Per-request timeout to the control server (ms).",
+          "default": "5000"
+        }
+      ]
+    }
+  ]
+}
