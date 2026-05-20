@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '0.4.0';
+const SERVER_VERSION = '0.5.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -408,6 +408,28 @@ server.registerTool(
       'understanding what the doctor knows how to look at before kicking off a diagnostic run.',
   },
   wrap(async () => ok(await apiGet('/doctor/checks'))),
+);
+
+server.registerTool(
+  'cloud_diagnose',
+  {
+    description:
+      'Run local diagnostics AND route the findings to the windy-fix-me cloud-relay for LLM-augmented ' +
+      'remediation. Returns both the local rule-based findings and the cloud-relay\'s structured ' +
+      'remediation (each entry has rootCause, a specific MCP tool call to invoke, fallback, verification ' +
+      'steps). Use this when local run_diagnostics surfaces warnings/errors and you want expert-level ' +
+      'fix guidance that knows about platform-specific quirks the local rules don\'t. Relay endpoint: ' +
+      'https://windy-fix-me.windyword.workers.dev/diagnose (override via WINDY_FIX_ME_URL env var on the ' +
+      'Windy Word side). May add ~2-3s of latency from the LLM round-trip.',
+    inputSchema: {
+      sharedSecret: z.string().optional().describe('Optional X-Windy-Fix-Me-Key for relays that require auth. Most public deployments leave this unset.'),
+    },
+  },
+  // The relay can legitimately take >5s — bump timeout to match.
+  wrap(async ({ sharedSecret }) => {
+    const body = sharedSecret ? { sharedSecret } : {};
+    return ok(await apiPost('/doctor/cloud-diagnose', body, { timeoutMs: 60 * 1000 }));
+  }),
 );
 
 // ── settings catalog (the curated, validated surface) ───────────────────

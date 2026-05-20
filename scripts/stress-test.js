@@ -129,6 +129,14 @@ await probe('get_install_status', { jobId: 'install-9999999-fake' }, {
 await probe('list_diagnostic_checks', {}, { summary: (d) => `${d.checks?.length} checks defined; ${d.checks?.filter(c => c.appliesToCurrentPlatform).length} apply to this platform` });
 const diag = await probe('run_diagnostics', {}, { summary: (d) => `overall=${d.overall}; counts=${JSON.stringify(d.counts)}; actionable=${d.actionable?.length}` });
 
+// ── cloud relay (v0.5.0) — costs ~$0.002 per call, skip if no network ──
+const cloudResult = await probe('cloud_diagnose', {}, {
+  check: (d) => d?.ok === true && d?.cloud?.ok === true,
+  summary: (d) => d?.cloud?.ok
+    ? `relay=${d?.relayUrl?.split('/').slice(2,3)[0]} model=${d?.cloud?.meta?.model} elapsed=${d?.cloud?.meta?.elapsedMs}ms cost=$${d?.cloud?.meta?.usage?.cost?.toFixed(4)} remediations=${d?.cloud?.remediations?.length}`
+    : `cloud failed: ${JSON.stringify(d?.cloud).slice(0, 100)}`,
+});
+
 // ── cross-platform whitelist sanity (v0.4.0) ──
 await probe('list_installable_dependencies', {}, {
   check: (d) => d.tools && d.tools.length >= 5,
