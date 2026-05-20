@@ -1,8 +1,8 @@
 {
   "name": "windy-word-mcp",
-  "version": "0.12.0",
+  "version": "1.0.0",
   "mcpName": "io.github.sneakyfree/windy-word-mcp",
-  "description": "MCP server exposing Windy Word's agent-control surface (paste strategies, hotkeys, models, config, transcription actions) to Claude Code and any other MCP-aware agent.",
+  "description": "MCP server exposing Windy Word's agent-control surface as 60 typed tools (paste / hotkeys / transcription / install / Doctor / archive / voice clones / translation / documents / soul-file).",
   "type": "module",
   "main": "src/index.js",
   "bin": {
@@ -12,6 +12,7 @@
     "src",
     "bin",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
