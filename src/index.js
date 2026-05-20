@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '0.5.0';
+const SERVER_VERSION = '0.6.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -133,6 +133,31 @@ server.registerTool(
     },
   },
   wrap(async ({ strategy }) => ok(await apiPost('/paste/test', { strategy }))),
+);
+
+server.registerTool(
+  'run_paste_injection_test',
+  {
+    description:
+      'Real end-to-end paste injection test. Spawns a focusable Tk scratchpad target, temporarily ' +
+      'flips Mutter\'s focus-new-windows policy to "strict" so the target auto-grabs focus, fires the ' +
+      'requested paste strategy, captures what landed in the target, and returns whether the captured ' +
+      'text matches what was sent. SAFE TO RUN — the target is a spawned scratchpad, not the user\'s ' +
+      'active window; the focus-policy flip is reverted after the test. Wayland+GNOME only in v0 (the ' +
+      'gsettings focus-policy flip is GNOME-specific). Returns the paste-strategy attempt diagnostic too.',
+    inputSchema: {
+      strategy: z.string().optional().describe('Paste strategy to test (default "ydotool_type"). Use list_paste_strategies to discover names.'),
+      text: z.string().optional().describe('Text to inject (default: a unique timestamped marker).'),
+      captureSeconds: z.number().int().min(3).max(30).optional().describe('How long to keep the Tk target open after firing the paste (default 6s).'),
+    },
+  },
+  wrap(async ({ strategy, text, captureSeconds }) => {
+    const body = {};
+    if (strategy) body.strategy = strategy;
+    if (text !== undefined) body.text = text;
+    if (captureSeconds !== undefined) body.captureSeconds = captureSeconds;
+    return ok(await apiPost('/paste/inject-test', body, { timeoutMs: 60 * 1000 }));
+  }),
 );
 
 server.registerTool(
@@ -440,12 +465,20 @@ server.registerTool(
     description:
       'List every setting Windy Word exposes as an agent-discoverable, schema-validated path. Returns ' +
       'each setting\'s dotted path, type, description, allowed values (if enum / range), default, side ' +
-      'effects of changing it, restartRequired flag, sensitivity (writable vs readonly), and the current ' +
-      'live value. Use this as the entry point for any agent setting introspection — it covers the curated ' +
-      'subset of get_config that has a known-safe schema. Paths outside this catalog are accessible only ' +
-      'via the lower-level get_config / set_config tools.',
+      'effects of changing it, restartRequired flag, sensitivity (writable vs readonly), tags, and the ' +
+      'current live value. The response also includes availableTags so agents can discover what tag ' +
+      'filters exist. Use this as the entry point for any agent setting introspection. Paths outside ' +
+      'the catalog are accessible only via the lower-level get_config / set_config tools. Optional `tag` ' +
+      'parameter narrows results — e.g. tag="voice-clone" returns just the settings that drive InstaBio ' +
+      'voice-clone training behavior, tag="archive" returns archive-related settings, etc.',
+    inputSchema: {
+      tag: z.string().optional().describe('Optional tag to filter by (voice-clone, archive, transcription, paste, hotkey, ui, geometry, lifecycle, etc). See availableTags in the unfiltered response.'),
+    },
   },
-  wrap(async () => ok(await apiGet('/settings/catalog'))),
+  wrap(async ({ tag }) => {
+    const qs = tag ? `?tag=${encodeURIComponent(tag)}` : '';
+    return ok(await apiGet(`/settings/catalog${qs}`));
+  }),
 );
 
 server.registerTool(
