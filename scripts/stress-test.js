@@ -78,6 +78,29 @@ results.push({
   summary: noTool.isError ? `rejected missing tool ✓` : 'NOT REJECTED — schema validation gap',
 });
 
+// ── voice clones (v0.7.0) ──
+await probe('list_voice_clones', {}, { summary: (d) => `count=${d.count} activeId=${d.activeId}` });
+await probe('get_active_voice_clone', {}, { summary: (d) => `active=${d.active ? d.active.id : 'null'}` });
+await probe('list_clone_bundles', {}, { summary: (d) => `${d.count} bundles` });
+// Negative paths — bogus ids should return structured error
+await probe('set_active_voice_clone', { id: 'bogus-id-xyz' }, {
+  check: (d, isErr) => isErr || d?.ok === false,
+  summary: (d) => `correctly rejected: ${(d?.error || '').slice(0, 60)}`,
+});
+await probe('delete_voice_clone', { id: 'bogus-id-xyz' }, {
+  check: (d, isErr) => isErr || d?.ok === false,
+  summary: (d) => `correctly rejected: ${(d?.error || '').slice(0, 60)}`,
+});
+await probe('preview_voice_clone', { id: 'bogus-id-xyz', metadataOnly: true }, {
+  check: (d, isErr) => isErr || d?.ok === false,
+  summary: (d) => `correctly rejected: ${(d?.error || '').slice(0, 60)}`,
+});
+// Setting active to null (deactivate) should work even with no clones
+await probe('set_active_voice_clone', { id: null }, {
+  check: (d) => d?.ok === true && d?.activeId === null,
+  summary: (d) => `deactivate ok=${d?.ok} activeId=${d?.activeId}`,
+});
+
 // ── settings catalog (v0.3.0 + tag filter v0.6.0) ──
 await probe('list_settings', {}, { summary: (d) => `${d.count} catalog entries; tags=${(d.availableTags||[]).join(',')}` });
 await probe('list_settings', { tag: 'voice-clone' }, {

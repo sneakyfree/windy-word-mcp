@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '0.6.0';
+const SERVER_VERSION = '0.7.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -404,6 +404,89 @@ server.registerTool(
       'when an agent forgot a jobId.',
   },
   wrap(async () => ok(await apiGet('/install/jobs'))),
+);
+
+// ── Voice clones (v0.7.0) ───────────────────────────────────────────────
+
+server.registerTool(
+  'list_voice_clones',
+  {
+    description:
+      'List all voice clones the user has on this machine. Returns each clone\'s id, name, duration, ' +
+      'created_at, status, plus a hasAudio boolean (no raw audio in the response — use preview_voice_clone ' +
+      'to fetch base64 audio for a specific clone). Also returns activeId — which clone is the current ' +
+      'TTS default. Use this to answer "what clones does the user have?" without paging through audio bytes.',
+  },
+  wrap(async () => ok(await apiGet('/voice-clones'))),
+);
+
+server.registerTool(
+  'get_active_voice_clone',
+  {
+    description:
+      'Return the currently-active voice clone (the one used for TTS playback), or {active: null} if no ' +
+      'clone is selected.',
+  },
+  wrap(async () => ok(await apiGet('/voice-clones/active'))),
+);
+
+server.registerTool(
+  'set_active_voice_clone',
+  {
+    description:
+      'Set which voice clone is the active TTS default. Pass id=null to deactivate (no clone — falls back ' +
+      'to built-in TTS). The id must match an existing clone (use list_voice_clones to discover ids).',
+    inputSchema: {
+      id: z.string().nullable().describe('Clone id, or null to deactivate.'),
+    },
+  },
+  wrap(async ({ id }) => ok(await apiPost('/voice-clones/active', { id }))),
+);
+
+server.registerTool(
+  'delete_voice_clone',
+  {
+    description:
+      'Delete a voice clone (metadata + audio file on disk). If the deleted clone was the active one, ' +
+      'activeId is reset to null. Returns the deleted clone\'s id and name for audit purposes. ' +
+      'Irreversible — confirm with the user before calling.',
+    inputSchema: {
+      id: z.string().describe('Clone id to delete.'),
+    },
+  },
+  wrap(async ({ id }) => ok(await apiPost('/voice-clones/delete', { id }))),
+);
+
+server.registerTool(
+  'preview_voice_clone',
+  {
+    description:
+      'Return a voice clone\'s metadata, optionally with the base64-encoded audio sample. Pass ' +
+      'metadataOnly=true to skip the audio (responses can be several MB otherwise). The mimeType field ' +
+      'tells the agent how to interpret audioBase64 (typically audio/webm).',
+    inputSchema: {
+      id: z.string().describe('Clone id.'),
+      metadataOnly: z.boolean().optional().describe('If true, skip the base64 audio payload. Defaults to false (audio included).'),
+    },
+  },
+  wrap(async ({ id, metadataOnly }) => {
+    const body = { id };
+    if (metadataOnly !== undefined) body.metadataOnly = metadataOnly;
+    return ok(await apiPost('/voice-clones/preview', body, { timeoutMs: 30 * 1000 }));
+  }),
+);
+
+server.registerTool(
+  'list_clone_bundles',
+  {
+    description:
+      'List training-bundle catalog — audio/video recordings the user has marked as candidates for ' +
+      'voice-clone training. Each entry has bundle_id, name, device info, sync_status, training_ready ' +
+      'flag, file size, created_at, and fileExists. Pairs with InstaBio voice-clone ingestion which ' +
+      'reads from these bundles. See [[project_instabio_voice_clone_data]] memory for the broader ' +
+      'voice-clone training-data contract.',
+  },
+  wrap(async () => ok(await apiGet('/clone-bundles'))),
 );
 
 // ── Windy Doctor (local diagnostics) ────────────────────────────────────
