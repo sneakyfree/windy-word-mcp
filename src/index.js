@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '0.1.0';
+const SERVER_VERSION = '0.1.1';
 
 const server = new McpServer({
   name: 'windy-word',
