@@ -246,6 +246,19 @@ await probe('set_setting', { path: 'nonexistent.setting', value: true }, {
   summary: (d) => `correctly rejected unknown: ${d?.error?.slice(0,60)}`,
 });
 
+// ── sound-effects discovery (v1.2.0 — Phase 1 placeholder) ──
+// The renderer-side localStorage bridge currently times out (Electron context
+// isolation). Tools are forward-compat placeholders — they MUST return a
+// structured shape (ok flag), not crash.
+await probe('get_sound_effect_state', {}, {
+  check: (d) => Array.isArray(d?.hookStages) && d.hookStages.length === 6,
+  summary: (d) => `hookStages=${d?.hookStages?.length}/6, rendererReadable=${d?.rendererReadable} (Phase 1 placeholder until renderer IPC bridge)`,
+});
+await probe('list_sound_effect_packs', {}, {
+  check: (d) => typeof d?.ok === 'boolean' && (Array.isArray(d?.packs) || d?.ok === false),
+  summary: (d) => `source=${d?.source || 'error'} count=${d?.count || 0} (Phase 1 placeholder)`,
+});
+
 // ── polkit rule bootstrap (v1.1.0) ──
 // Skip a live install/remove — that requires a pkexec prompt the user
 // must accept. The endpoint surface (501 for non-Linux, 400 for bad

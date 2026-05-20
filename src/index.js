@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '1.1.0';
+const SERVER_VERSION = '1.2.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -479,6 +479,38 @@ server.registerTool(
     // Generous timeout: 60s ffmpeg + 120s WS + slack — plus user audio could be long.
     return ok(await apiPost('/transcribe-file', body, { timeoutMs: 4 * 60 * 1000 }));
   }),
+);
+
+// ── Sound effects discovery (v1.2.0, read-only) ─────────────────────────
+
+server.registerTool(
+  'get_sound_effect_state',
+  {
+    description:
+      'Return the current sound-effects configuration: per-hook-stage enabled/volume settings (the 6 ' +
+      'stages are start, during, stop, process, warning, paste), the active sound pack, master SFX ' +
+      'volume, and any per-stage custom sound overrides. The 6 hookStages are always returned even when ' +
+      'live state read fails (so agents can show the stage catalog).\n\n' +
+      '**Phase 1 limitation:** Sound state lives in renderer-side localStorage, not the main electron-' +
+      'store. Reading via webContents.executeJavaScript currently fails (Electron context-isolation) — ' +
+      'expect rendererReadable=false with rendererError set. Phase 2 will add a renderer-side IPC bridge ' +
+      'in windy-pro to expose live state + writes.',
+  },
+  wrap(async () => ok(await apiGet('/sound-effects/state'))),
+);
+
+server.registerTool(
+  'list_sound_effect_packs',
+  {
+    description:
+      'List the sound-effect packs the Windy Word EffectsEngine knows about (_silent, classic-beep, ' +
+      'soft-chime, and other built-in synthesized packs). Pairs with the 6 hook stages (start/during/' +
+      'stop/process/warning/paste) to drive per-stage sound assignments.\n\n' +
+      '**Phase 1 limitation:** Same as get_sound_effect_state — the renderer EffectsEngine isn\'t ' +
+      'globally exposed, so live pack-list queries return ok=false until Phase 2 (renderer-side IPC ' +
+      'bridge). The endpoint shape is finalized for forward-compat.',
+  },
+  wrap(async () => ok(await apiGet('/sound-effects/packs'))),
 );
 
 // ── Misc utilities (v0.10.0) ────────────────────────────────────────────
