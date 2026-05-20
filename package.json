@@ -1,0 +1,40 @@
+{
+  "name": "windy-word-mcp",
+  "version": "0.1.0",
+  "description": "MCP server exposing Windy Word's agent-control surface (paste strategies, hotkeys, models, config, transcription actions) to Claude Code and any other MCP-aware agent.",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "windy-word-mcp": "bin/windy-word-mcp.js"
+  },
+  "files": [
+    "src",
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "start": "node bin/windy-word-mcp.js",
+    "test:list-tools": "node scripts/list-tools.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "windy-word",
+    "voice-to-text",
+    "agent"
+  ],
+  "author": "Windy Word <dev@windyword.ai>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sneakyfree/windy-word-mcp.git"
+  }
+}
