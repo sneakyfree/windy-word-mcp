@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '1.3.0';
+const SERVER_VERSION = '1.5.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -918,13 +918,30 @@ server.registerTool(
 );
 
 server.registerTool(
+  'submit_voice_clone_to_cloud',
+  {
+    description:
+      'Submit a local voice clone to Windy Clone for ElevenLabs training. Idempotent on cloud_order_id: ' +
+      'if the clone has already been submitted, returns { ok: false, error: "Already submitted...", ' +
+      'cloud_order_id: <existing> } without firing a second submission. Requires the user to be signed ' +
+      'in to their Windy account (auth.token in electron-store). On success returns { ok: true, ' +
+      'order_id, status }; poll get_cloud_clone_order_status with the returned order_id for training ' +
+      'progress. Get clone ids from list_voice_clones.',
+    inputSchema: {
+      cloneId: z.string().describe('Local clone id from list_voice_clones (e.g. "vc_2026-05-21_abc123").'),
+    },
+  },
+  wrap(async ({ cloneId }) => ok(await apiPost('/clones/cloud/submit', { cloneId }, { timeoutMs: 35 * 1000 }))),
+);
+
+server.registerTool(
   'get_cloud_clone_order_status',
   {
     description:
       'Check the status of a Windy Clone cloud-training order — used after submit_voice_clone_to_cloud ' +
-      '(Phase 2 — not yet exposed as MCP) to poll for ElevenLabs training completion. Requires the user ' +
-      'to be signed in to their Windy account; returns a clean 401-shape error if not. Returns the raw ' +
-      'order body from the Windy Clone API.',
+      'to poll for ElevenLabs training completion. Requires the user to be signed in to their Windy ' +
+      'account; returns a clean 401-shape error if not. Returns the raw order body from the Windy ' +
+      'Clone API.',
     inputSchema: {
       orderId: z.string().describe('Order id returned from a previous submit_voice_clone_to_cloud call.'),
     },
@@ -1118,6 +1135,36 @@ server.registerTool(
   }),
 );
 
+// ── Archive deep-control (Wave W2 — UI-parity sweep) ─────────────────────
+// Turns the archive from a list-and-fetch surface into a queryable database.
+// Pairs with /archive/search, /archive/by-date, /archive/bulk-delete added
+// in windy-pro's Wave W2 PR.
+
+server.registerTool(
+  'search_archives',
+  {
+    description:
+      'Full-text substring search across every archived transcript. Returns matches with a ' +
+      'short snippet of surrounding context. Case-insensitive by default. Scales to thousands ' +
+      'of entries (the scan is a single _agentArchiveScan pass + in-memory filter). Use this ' +
+      'when the user asks "what did I say about X" or "when did I last talk to Y". For richer ' +
+      'queries (regex, semantic, embedding) — defer; this is the fast substring path.',
+    inputSchema: {
+      query: z.string().min(1).describe('Substring to search for. Required.'),
+      limit: z.number().int().min(1).max(1000).optional().describe('Cap the returned match count. Default 200.'),
+      caseInsensitive: z.boolean().optional().describe('Default true. Pass false for exact-case matching.'),
+      includeBody: z.boolean().optional().describe('Default false. Pass true to include the full transcript text on each match (otherwise only a snippet).'),
+    },
+  },
+  wrap(async ({ query, limit, caseInsensitive, includeBody }) => {
+    const body = { query };
+    if (limit !== undefined) body.limit = limit;
+    if (caseInsensitive !== undefined) body.caseInsensitive = caseInsensitive;
+    if (includeBody !== undefined) body.includeBody = includeBody;
+    return ok(await apiPost('/archive/search', body));
+  }),
+);
+
 server.registerTool(
   'check_for_updates',
   {
@@ -1143,6 +1190,89 @@ server.registerTool(
   },
   wrap(async ({ theme }) =>
     ok(await apiPost('/settings/set', { path: 'appearance.theme', value: theme })),
+  ),
+);
+
+// ── Window + state observability (Wave W1 — UI-parity sweep) ──────────
+// Wraps the new /window/* and /recording/state endpoints. Lets agents do
+// what the title bar buttons do (minimize / maximize / move / resize),
+// adjust font size, take a state snapshot, and poll the recording-flow
+// state without blind-polling for events. Note: on macOS the main window
+// is focusable:false (recording focus-theft defense), so bring-to-front
+// will NOT steal keyboard focus from the user's external app. That's the
+// invariant, not a bug.
+
+server.registerTool(
+  'get_window_state',
+  {
+    description:
+      'Snapshot the main window\'s current state: exists, maximized, minimized, focused, visible, ' +
+      'fullScreen, simpleFullScreen, bounds {x,y,width,height}, fontSize, opacity, alwaysOnTop. ' +
+      'Read-only. The cheapest call to find out "is the user actively using the app right now" — ' +
+      'check focused + isRecording (via get_recording_state) before doing anything intrusive.',
+  },
+  wrap(async () => ok(await apiGet('/window'))),
+);
+
+server.registerTool(
+  'minimize_window',
+  {
+    description:
+      'Minimize the main Windy Word window to the dock/taskbar. Mirrors the title-bar minimize ' +
+      'button. Idempotent — calling on an already-minimized window is a no-op.',
+  },
+  wrap(async () => ok(await apiPost('/window/minimize', {}))),
+);
+
+server.registerTool(
+  'maximize_window',
+  {
+    description:
+      'Maximize the main Windy Word window to fill the screen. Mirrors the title-bar maximize ' +
+      'button. Different from fullscreen: keeps the title bar visible and stays in the current ' +
+      'OS space. Use set_video_fullscreen for true fullscreen.',
+  },
+  wrap(async () => ok(await apiPost('/window/maximize', {}))),
+);
+
+server.registerTool(
+  'unmaximize_window',
+  {
+    description:
+      'Restore the main window from maximized to its previous size. No-op if not maximized.',
+  },
+  wrap(async () => ok(await apiPost('/window/unmaximize', {}))),
+);
+
+server.registerTool(
+  'bring_window_to_front',
+  {
+    description:
+      'Restore the window if minimized, show it if hidden, and raise it above other windows. ' +
+      'DOES NOT steal keyboard focus on macOS — the main window is focusable:false to protect ' +
+      'the recording flow from focus-theft against the user\'s external app. The window comes ' +
+      'to the visual front; input focus stays where it was. Returns {focused:false} on macOS to ' +
+      'make this explicit.',
+  },
+  wrap(async () => ok(await apiPost('/window/bring-to-front', {}))),
+);
+
+server.registerTool(
+  'set_window_geometry',
+  {
+    description:
+      'Set the main window\'s position and size in screen pixels. Updates the live window AND ' +
+      'persists to window.{x,y,width,height} so it survives restart. Useful for arranging the ' +
+      'app before a demo or moving it to a specific monitor.',
+    inputSchema: {
+      x: z.number().describe('Window x position in screen pixels.'),
+      y: z.number().describe('Window y position in screen pixels.'),
+      width: z.number().int().min(200).max(4000).describe('Window width in pixels (200-4000).'),
+      height: z.number().int().min(200).max(4000).describe('Window height in pixels (200-4000).'),
+    },
+  },
+  wrap(async ({ x, y, width, height }) =>
+    ok(await apiPost('/window/geometry', { x, y, width, height })),
   ),
 );
 
@@ -1222,6 +1352,234 @@ server.registerTool(
       'the applied bindings so the agent can confirm. Idempotent — safe to call repeatedly.',
   },
   wrap(async () => ok(await apiPost('/hotkeys/reset', {}))),
+);
+
+server.registerTool(
+  'set_font_size',
+  {
+    description:
+      'Set the UI font-size zoom factor (70-150%). 100 is default. Mirrors the A- / A+ buttons ' +
+      'in the Settings header. Persists to appearance.fontSize and broadcasts a font-size-changed ' +
+      'event to the renderer so the live UI updates immediately.',
+    inputSchema: {
+      percent: z.number().int().min(70).max(150).describe('Zoom percentage. Clamped to 70-150.'),
+    },
+  },
+  wrap(async ({ percent }) => ok(await apiPost('/window/font-size', { percent }))),
+);
+
+server.registerTool(
+  'set_video_fullscreen',
+  {
+    description:
+      'Toggle the main window into native OS-level fullscreen. On macOS uses setSimpleFullScreen ' +
+      '(works with the focusable:false main window — doesn\'t need key window); other platforms ' +
+      'use standard setFullScreen. Used by the History video-expand button (PR #143). For UI font ' +
+      'zoom use set_font_size; for in-window maximize use maximize_window.',
+    inputSchema: {
+      on: z.boolean().describe('true = enter fullscreen, false = exit.'),
+    },
+  },
+  wrap(async ({ on }) => ok(await apiPost('/window/video-fullscreen', { on }))),
+);
+
+server.registerTool(
+  'get_recording_state',
+  {
+    description:
+      'Return the recording-flow state: isRecording (main-process truth), pythonEngineRunning ' +
+      '(transcription backend alive), totalPasteAttempts (counter — increments after every paste ' +
+      'attempt; use to detect activity between polls). Read-only and cheap. Use this BEFORE doing ' +
+      'anything intrusive — if isRecording=true, the user is actively recording and you should ' +
+      'defer or use toggle_recording to stop them gracefully.',
+  },
+  wrap(async () => ok(await apiGet('/recording/state'))),
+);
+
+server.registerTool(
+  'archives_by_date_range',
+  {
+    description:
+      'Return archived sessions whose start timestamp falls within [from, to]. Either endpoint ' +
+      'is optional — omit from for "since beginning", omit to for "until now". Sorted newest ' +
+      'first. Use ISO 8601 (date or date+time, e.g. "2026-05-20" or "2026-05-20T18:00:00Z").',
+    inputSchema: {
+      from: z.string().optional().describe('ISO 8601 start of window. Inclusive.'),
+      to: z.string().optional().describe('ISO 8601 end of window. Inclusive.'),
+      limit: z.number().int().min(1).max(1000).optional().describe('Cap the returned entry count. Default 200.'),
+    },
+  },
+  wrap(async ({ from, to, limit }) => {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    if (limit !== undefined) params.set('limit', String(limit));
+    const qs = params.toString();
+    return ok(await apiGet('/archive/by-date' + (qs ? '?' + qs : '')));
+  }),
+);
+
+server.registerTool(
+  'bulk_delete_archives',
+  {
+    description:
+      'Tear down multiple archive entries in one call. Each entry\'s .md transcript + linked ' +
+      'audio + linked video are removed. REQUIRES an explicit confirm token "YES-DELETE-<N>" ' +
+      'where N matches the ids.length — this is the guard that prevents an agent hallucinating ' +
+      '"yes" and accidentally wiping the entire history. Each id\'s outcome is reported ' +
+      'independently in the response (not-found ids do not abort the batch).',
+    inputSchema: {
+      ids: z.array(z.string()).min(1).describe('Archive ids to delete (from list_archive_entries / search_archives / archives_by_date_range).'),
+      confirm: z.string().describe('Must equal "YES-DELETE-<N>" where N is ids.length. Mismatch returns 400.'),
+    },
+  },
+  wrap(async ({ ids, confirm }) => ok(await apiPost('/archive/bulk-delete', { ids, confirm }))),
+);
+
+// ── Lifecycle + finishing surfaces (Wave W4 + W2 cont'd) ────────────────
+// App lifecycle, window control, notifications, bulk archive text export.
+
+server.registerTool(
+  'cancel_recording',
+  {
+    description:
+      'Cancel an in-flight recording without saving the result. Safe to call when idle (returns ' +
+      'wasRecording:false). Unlike toggle_recording which stops the recording AND triggers ' +
+      'transcribe + paste, this drops the audio entirely. Useful when the agent realizes the ' +
+      'recording was started by mistake or the user said "wait, scratch that".',
+  },
+  wrap(async () => ok(await apiPost('/recording/cancel', {}))),
+);
+
+server.registerTool(
+  'restart_app',
+  {
+    description:
+      'Relaunch Windy Word. app.relaunch() + app.exit(0). Returns 200 immediately; the actual ' +
+      'exit fires ~250ms later so this response lands. DESTRUCTIVE — closes the running app, ' +
+      'losing any in-flight recording. Get user confirmation before calling.',
+  },
+  wrap(async () => ok(await apiPost('/app/restart', {}))),
+);
+
+server.registerTool(
+  'quit_app',
+  {
+    description:
+      'Quit Windy Word cleanly. app.quit(). Returns 200 immediately; exit fires ~250ms later. ' +
+      'DESTRUCTIVE — app will not auto-restart. Get user confirmation before calling.',
+  },
+  wrap(async () => ok(await apiPost('/app/quit', {}))),
+);
+
+server.registerTool(
+  'set_always_on_top',
+  {
+    description:
+      'Toggle whether the Windy Word window stays above other windows. Mirrors Settings → ' +
+      'Appearance → Always on Top. Live update on the window + persist to ' +
+      'appearance.alwaysOnTop. Idempotent.',
+    inputSchema: {
+      on: z.boolean().describe('true = pin above all, false = normal Z-order.'),
+    },
+  },
+  wrap(async ({ on }) => ok(await apiPost('/window/always-on-top', { on }))),
+);
+
+server.registerTool(
+  'set_opacity',
+  {
+    description:
+      'Set the Windy Word window opacity (0.1 = mostly transparent, 1.0 = fully opaque). Mirrors ' +
+      'Settings → Appearance → Window Opacity. Live update on the window + persist to ' +
+      'appearance.opacity. Values outside [0.1, 1.0] are rejected.',
+    inputSchema: {
+      value: z.number().min(0.1).max(1.0).describe('Opacity 0.1-1.0.'),
+    },
+  },
+  wrap(async ({ value }) => ok(await apiPost('/window/opacity', { value }))),
+);
+
+server.registerTool(
+  'send_notification',
+  {
+    description:
+      'Show an OS-native notification via Electron\'s Notification API. Returns ok:true if ' +
+      'shown. Title is capped at 200 chars, body at 1000 chars. Pass silent:true to suppress ' +
+      'sound. Returns 500 on platforms where notifications aren\'t supported.',
+    inputSchema: {
+      title: z.string().min(1).max(200).describe('Notification title (1-200 chars).'),
+      body: z.string().max(1000).optional().describe('Notification body (up to 1000 chars).'),
+      silent: z.boolean().optional().describe('Suppress notification sound (default false).'),
+    },
+  },
+  wrap(async ({ title, body, silent }) => ok(await apiPost('/notifications/send', { title, body, silent }))),
+);
+
+server.registerTool(
+  'bulk_export_archives_text',
+  {
+    description:
+      'Export the transcript text of multiple archive entries to a directory. One file per ' +
+      'entry, named by the archive id. Format = "md" (default — with header), "txt" (plain ' +
+      'transcript), or "json" (full entry metadata + text). targetDir is created recursively ' +
+      'if missing. Per-id status returned; failures do not abort the batch. Pair with ' +
+      'search_archives or archives_by_date_range to assemble the id list.',
+    inputSchema: {
+      ids: z.array(z.string()).min(1).describe('Archive ids to export.'),
+      targetDir: z.string().describe('Output directory. Created recursively if missing.'),
+      format: z.enum(['md', 'txt', 'json']).optional().describe('Output format. Default "md".'),
+    },
+  },
+  wrap(async ({ ids, targetDir, format }) =>
+    ok(await apiPost('/archive/bulk-export-text', { ids, targetDir, ...(format ? { format } : {}) })),
+  ),
+);
+
+// ── recording lifecycle + audio devices (Wave W5, v1.4.0) ──────────────
+//
+// Deterministic start/stop verbs (vs. the legacy `toggle_recording` which
+// flips whichever state the app is in). Both are idempotent — if the app
+// is already in the requested state, the call returns ok with
+// alreadyRecording / alreadyStopped set, without firing a duplicate
+// transition. Microphone enumeration is exposed read-only; to switch
+// devices, set engine.micDeviceId via set_setting / set_config.
+
+server.registerTool(
+  'start_recording',
+  {
+    description:
+      'Begin a voice recording (mode-aware: batch / streaming / API engine). The actual ' +
+      'mic-capture + WebSocket setup completes asynchronously after the call returns — ' +
+      'poll get_recording_state to confirm the live state. Idempotent: if already ' +
+      'recording, returns { ok: true, alreadyRecording: true } without firing a second start.',
+  },
+  wrap(async () => ok(await apiPost('/recording/start'))),
+);
+
+server.registerTool(
+  'stop_recording',
+  {
+    description:
+      'End the current recording and trigger the transcription + paste pipeline against ' +
+      'the window that had focus when recording started. Idempotent: returns ' +
+      '{ ok: true, alreadyStopped: true } if no recording is active.',
+  },
+  wrap(async () => ok(await apiPost('/recording/stop'))),
+);
+
+server.registerTool(
+  'list_audio_devices',
+  {
+    description:
+      'Enumerate audio input devices (microphones) available to Windy Word. Returns each ' +
+      'device with { deviceId, label, groupId, isCurrent } plus the currently-selected ' +
+      'micDeviceId and a hint when labels are hidden (the OS hides labels until mic ' +
+      'permission has been granted at least once — the user must start a recording one ' +
+      'time before labels become visible). To switch devices, call set_setting with ' +
+      'path "engine.micDeviceId" and the desired deviceId.',
+  },
+  wrap(async () => ok(await apiGet('/audio/devices'))),
 );
 
 // ── actions (legacy GNOME-keybinding endpoints) ─────────────────────────

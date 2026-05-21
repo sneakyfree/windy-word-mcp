@@ -2,6 +2,18 @@
 
 All notable changes to `windy-word-mcp`. SemVer 2.0.0.
 
+## [1.5.0] — 2026-05-21
+
+**Waves W1 → W6 — full agent-control surface.** +23 tools. Total: **95**.
+
+- **Wave W1 (window + state observability, 9 tools):** `get_window_state`, `minimize_window`, `maximize_window`, `unmaximize_window`, `bring_window_to_front`, `set_window_geometry`, `set_font_size`, `set_video_fullscreen`, `get_recording_state`.
+- **Wave W2 (archive search + bulk-delete, 3 tools):** `search_archives`, `archives_by_date_range`, `bulk_delete_archives` (YES-DELETE-N confirm guard).
+- **Wave W4/W2 cont'd (lifecycle + bulk-export, 7 tools):** `cancel_recording`, `restart_app`, `quit_app`, `set_always_on_top`, `set_opacity`, `send_notification`, `bulk_export_archives_text`.
+- **Wave W5 (recording verbs + audio devices, 3 tools):** `start_recording`, `stop_recording`, `list_audio_devices` — closes the "Hey agent, start recording" grandma-demo gap.
+- **Wave W6 (voice clone cloud submit, 1 tool):** `submit_voice_clone_to_cloud` — completes the create → submit → poll training arc.
+
+Companion windy-pro merges land the corresponding HTTP control-plane endpoints (PRs #143, #148-#151, #153-#155, #157-#158).
+
 ## [1.0.0] — 2026-05-20
 
 **Stable API surface declared.** No new tools — this release consolidates the surface built in v0.1.0 through v0.12.0. Tool names, input schemas, and response shapes are committed to as stable. Future 1.x releases add new tools without breaking existing ones. Breaking changes will go to 2.0.0.
