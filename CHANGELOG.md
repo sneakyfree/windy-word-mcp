@@ -2,6 +2,14 @@
 
 All notable changes to `windy-word-mcp`. SemVer 2.0.0.
 
+## [1.4.0] — 2026-05-21
+
+**Wave W6 — voice clone cloud submit.** +1 tool. Total: 65 (assuming Wave W5 not yet merged; conflicts with W5 are version-bump-only).
+
+- `submit_voice_clone_to_cloud` — submit a local voice clone to Windy Clone for ElevenLabs training. Idempotent on `cloud_order_id`; returns existing order_id if already submitted. Requires Windy account sign-in. Use `get_cloud_clone_order_status` to poll training progress with the returned `order_id`.
+
+Closes the agent path for the full voice-clone training flow: create (`create_voice_clone_from_path`) → submit (`submit_voice_clone_to_cloud`) → poll (`get_cloud_clone_order_status`). Companion windy-pro PR refactors the existing IPC handler into a shared helper so both IPC and the new HTTP endpoint go through one code path.
+
 ## [1.0.0] — 2026-05-20
 
 **Stable API surface declared.** No new tools — this release consolidates the surface built in v0.1.0 through v0.12.0. Tool names, input schemas, and response shapes are committed to as stable. Future 1.x releases add new tools without breaking existing ones. Breaking changes will go to 2.0.0.
