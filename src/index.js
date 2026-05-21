@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '1.3.0';
+const SERVER_VERSION = '1.4.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -1089,6 +1089,52 @@ server.registerTool(
     if (patch !== undefined) body.patch = patch;
     return ok(await apiPost('/config', body));
   }),
+);
+
+// ── recording lifecycle + audio devices (Wave W5, v1.4.0) ──────────────
+//
+// Deterministic start/stop verbs (vs. the legacy `toggle_recording` which
+// flips whichever state the app is in). Both are idempotent — if the app
+// is already in the requested state, the call returns ok with
+// alreadyRecording / alreadyStopped set, without firing a duplicate
+// transition. Microphone enumeration is exposed read-only; to switch
+// devices, set engine.micDeviceId via set_setting / set_config.
+
+server.registerTool(
+  'start_recording',
+  {
+    description:
+      'Begin a voice recording (mode-aware: batch / streaming / API engine). The actual ' +
+      'mic-capture + WebSocket setup completes asynchronously after the call returns — ' +
+      'poll get_recording_state to confirm the live state. Idempotent: if already ' +
+      'recording, returns { ok: true, alreadyRecording: true } without firing a second start.',
+  },
+  wrap(async () => ok(await apiPost('/recording/start'))),
+);
+
+server.registerTool(
+  'stop_recording',
+  {
+    description:
+      'End the current recording and trigger the transcription + paste pipeline against ' +
+      'the window that had focus when recording started. Idempotent: returns ' +
+      '{ ok: true, alreadyStopped: true } if no recording is active.',
+  },
+  wrap(async () => ok(await apiPost('/recording/stop'))),
+);
+
+server.registerTool(
+  'list_audio_devices',
+  {
+    description:
+      'Enumerate audio input devices (microphones) available to Windy Word. Returns each ' +
+      'device with { deviceId, label, groupId, isCurrent } plus the currently-selected ' +
+      'micDeviceId and a hint when labels are hidden (the OS hides labels until mic ' +
+      'permission has been granted at least once — the user must start a recording one ' +
+      'time before labels become visible). To switch devices, call set_setting with ' +
+      'path "engine.micDeviceId" and the desired deviceId.',
+  },
+  wrap(async () => ok(await apiGet('/audio/devices'))),
 );
 
 // ── actions (legacy GNOME-keybinding endpoints) ─────────────────────────

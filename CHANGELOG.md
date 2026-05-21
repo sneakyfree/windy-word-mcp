@@ -2,6 +2,16 @@
 
 All notable changes to `windy-word-mcp`. SemVer 2.0.0.
 
+## [1.4.0] — 2026-05-21
+
+**Wave W5 — agent superpowers.** +3 tools. Total: 67.
+
+- `start_recording` — deterministic start (vs. legacy `toggle_recording` which flips state). Mode-aware (batch / streaming / API engine), idempotent. Returns `{ ok: true, alreadyRecording: true }` if already capturing.
+- `stop_recording` — deterministic stop, triggers transcription + paste pipeline against the focused window. Idempotent.
+- `list_audio_devices` — enumerates microphones via the renderer's MediaDevices API, marks the current device with `isCurrent`, and surfaces a hint when labels are hidden (the OS hides them until mic permission has been granted once). To switch device, call `set_setting` with path `engine.micDeviceId`.
+
+Closes the most-requested grandma-demo gap: utterances like "hey agent, start recording" and "use my AirPods" now work end-to-end through MCP without the agent having to know whether the app is currently idle.
+
 ## [1.0.0] — 2026-05-20
 
 **Stable API surface declared.** No new tools — this release consolidates the surface built in v0.1.0 through v0.12.0. Tool names, input schemas, and response shapes are committed to as stable. Future 1.x releases add new tools without breaking existing ones. Breaking changes will go to 2.0.0.
