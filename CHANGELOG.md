@@ -2,6 +2,18 @@
 
 All notable changes to `windy-word-mcp`. SemVer 2.0.0.
 
+## [1.7.0] — 2026-05-21
+
+**TTS round-trip — the agent talks back.** +3 tools. Total: **107**.
+
+Closes the half-conversation gap: until now the user talked to the app and the app silently acted. With these the agent can read back transcripts, confirm actions ("OK, I muted notifications"), or hold an eyes-free conversation while grandma's hands are busy. Cross-platform via the `say` npm: macOS `/usr/bin/say`, Windows `System.Speech.Synthesis`, Linux `festival` or `espeak` (must be installed; structured error hint on failure).
+
+- `speak_text(text, voice?, rate?, interrupt?)` — proxies `POST /tts/speak`. Returns 200 immediately after starting playback; default `interrupt:true` cancels any in-flight TTS so a new utterance always wins. Max 5000 chars per call.
+- `stop_speaking` — proxies `POST /tts/stop`. Safe to call when nothing is playing.
+- `list_tts_voices` — proxies `GET /tts/voices`. Returns platform-specific voice names (macOS "Samantha", Windows "Microsoft David Desktop", etc).
+
+Companion `windy-pro` merge: PR `feat/tts-speak-text` (adds three `/tts/*` HTTP routes; new dep `say@^0.16.0`).
+
 ## [1.6.0] — 2026-05-21
 
 **Account / billing / plan surface.** +6 tools. Total: **104**.

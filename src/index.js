@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '1.6.0';
+const SERVER_VERSION = '1.7.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -1674,6 +1674,58 @@ server.registerTool(
       'already signed out and safe to call offline.',
   },
   wrap(async () => ok(await apiPost('/account/logout'))),
+);
+
+// ── TTS — the agent talks back ──────────────────────────────────────────
+// Closes the half-conversation gap. Until now the user talked to the
+// app and the app silently acted; with these three the agent can read
+// back transcripts, confirm actions, or hold an eyes-free conversation.
+// Cross-platform: mac /usr/bin/say, Windows System.Speech.Synthesis,
+// Linux festival/espeak (must be installed).
+
+server.registerTool(
+  'speak_text',
+  {
+    description:
+      'Speak text aloud through the OS\'s system TTS. Use this whenever the user can\'t see ' +
+      'the screen — confirmations ("OK, I muted notifications"), read-backs ("here\'s your ' +
+      'transcript: ..."), or eyes-free conversation. Returns 200 immediately after starting ' +
+      'playback (does NOT block for audio duration). Default interrupt:true cancels any ' +
+      'currently-playing TTS so a new utterance always wins; pass interrupt:false to queue. ' +
+      'voice and rate are platform-specific — call list_tts_voices first if the user asks for ' +
+      'a particular voice. Linux requires festival or espeak installed; failure returns a ' +
+      'structured hint.',
+    inputSchema: {
+      text: z.string().min(1).max(5000).describe('Text to speak. Max 5000 chars; break longer messages into chunks.'),
+      voice: z.string().optional().describe('Optional voice name (platform-specific, e.g. "Samantha" on macOS). Omit for OS default.'),
+      rate: z.number().optional().describe('Optional speech rate. macOS: words-per-minute (default ~175). Omit for OS default.'),
+      interrupt: z.boolean().optional().describe('If true (default) cancels any in-flight TTS before speaking. Set false to queue after current speech.'),
+    },
+  },
+  wrap(async ({ text, voice, rate, interrupt }) => ok(await apiPost('/tts/speak', { text, voice, rate, interrupt }))),
+);
+
+server.registerTool(
+  'stop_speaking',
+  {
+    description:
+      'Silence any in-flight TTS playback immediately. Use this when the user says "stop", ' +
+      '"shut up", "be quiet", or interrupts to ask something new. Safe to call when nothing ' +
+      'is playing.',
+  },
+  wrap(async () => ok(await apiPost('/tts/stop'))),
+);
+
+server.registerTool(
+  'list_tts_voices',
+  {
+    description:
+      'List the system TTS voices installed on this machine. Returns platform-specific names ' +
+      '(macOS: "Samantha", "Daniel", "Alex"; Windows: "Microsoft David Desktop"). Pass one of ' +
+      'these as the `voice` argument to speak_text. Use this when the user asks "what voices ' +
+      'do you have" or wants to switch the agent\'s voice.',
+  },
+  wrap(async () => ok(await apiGet('/tts/voices'))),
 );
 
 // ── actions (legacy GNOME-keybinding endpoints) ─────────────────────────
