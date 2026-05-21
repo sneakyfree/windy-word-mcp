@@ -1091,6 +1091,76 @@ server.registerTool(
   }),
 );
 
+// ── Archive deep-control (Wave W2 — UI-parity sweep) ─────────────────────
+// Turns the archive from a list-and-fetch surface into a queryable database.
+// Pairs with /archive/search, /archive/by-date, /archive/bulk-delete added
+// in windy-pro's Wave W2 PR.
+
+server.registerTool(
+  'search_archives',
+  {
+    description:
+      'Full-text substring search across every archived transcript. Returns matches with a ' +
+      'short snippet of surrounding context. Case-insensitive by default. Scales to thousands ' +
+      'of entries (the scan is a single _agentArchiveScan pass + in-memory filter). Use this ' +
+      'when the user asks "what did I say about X" or "when did I last talk to Y". For richer ' +
+      'queries (regex, semantic, embedding) — defer; this is the fast substring path.',
+    inputSchema: {
+      query: z.string().min(1).describe('Substring to search for. Required.'),
+      limit: z.number().int().min(1).max(1000).optional().describe('Cap the returned match count. Default 200.'),
+      caseInsensitive: z.boolean().optional().describe('Default true. Pass false for exact-case matching.'),
+      includeBody: z.boolean().optional().describe('Default false. Pass true to include the full transcript text on each match (otherwise only a snippet).'),
+    },
+  },
+  wrap(async ({ query, limit, caseInsensitive, includeBody }) => {
+    const body = { query };
+    if (limit !== undefined) body.limit = limit;
+    if (caseInsensitive !== undefined) body.caseInsensitive = caseInsensitive;
+    if (includeBody !== undefined) body.includeBody = includeBody;
+    return ok(await apiPost('/archive/search', body));
+  }),
+);
+
+server.registerTool(
+  'archives_by_date_range',
+  {
+    description:
+      'Return archived sessions whose start timestamp falls within [from, to]. Either endpoint ' +
+      'is optional — omit from for "since beginning", omit to for "until now". Sorted newest ' +
+      'first. Use ISO 8601 (date or date+time, e.g. "2026-05-20" or "2026-05-20T18:00:00Z").',
+    inputSchema: {
+      from: z.string().optional().describe('ISO 8601 start of window. Inclusive.'),
+      to: z.string().optional().describe('ISO 8601 end of window. Inclusive.'),
+      limit: z.number().int().min(1).max(1000).optional().describe('Cap the returned entry count. Default 200.'),
+    },
+  },
+  wrap(async ({ from, to, limit }) => {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    if (limit !== undefined) params.set('limit', String(limit));
+    const qs = params.toString();
+    return ok(await apiGet('/archive/by-date' + (qs ? '?' + qs : '')));
+  }),
+);
+
+server.registerTool(
+  'bulk_delete_archives',
+  {
+    description:
+      'Tear down multiple archive entries in one call. Each entry\'s .md transcript + linked ' +
+      'audio + linked video are removed. REQUIRES an explicit confirm token "YES-DELETE-<N>" ' +
+      'where N matches the ids.length — this is the guard that prevents an agent hallucinating ' +
+      '"yes" and accidentally wiping the entire history. Each id\'s outcome is reported ' +
+      'independently in the response (not-found ids do not abort the batch).',
+    inputSchema: {
+      ids: z.array(z.string()).min(1).describe('Archive ids to delete (from list_archive_entries / search_archives / archives_by_date_range).'),
+      confirm: z.string().describe('Must equal "YES-DELETE-<N>" where N is ids.length. Mismatch returns 400.'),
+    },
+  },
+  wrap(async ({ ids, confirm }) => ok(await apiPost('/archive/bulk-delete', { ids, confirm }))),
+);
+
 // ── actions (legacy GNOME-keybinding endpoints) ─────────────────────────
 
 const ACTION_ENDPOINTS = {
