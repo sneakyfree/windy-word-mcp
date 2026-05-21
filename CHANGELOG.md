@@ -2,15 +2,17 @@
 
 All notable changes to `windy-word-mcp`. SemVer 2.0.0.
 
-## [1.4.0] — 2026-05-21
+## [1.5.0] — 2026-05-21
 
-**Wave W5 — agent superpowers.** +3 tools. Total: 67.
+**Waves W1 → W6 — full agent-control surface.** +23 tools. Total: **95**.
 
-- `start_recording` — deterministic start (vs. legacy `toggle_recording` which flips state). Mode-aware (batch / streaming / API engine), idempotent. Returns `{ ok: true, alreadyRecording: true }` if already capturing.
-- `stop_recording` — deterministic stop, triggers transcription + paste pipeline against the focused window. Idempotent.
-- `list_audio_devices` — enumerates microphones via the renderer's MediaDevices API, marks the current device with `isCurrent`, and surfaces a hint when labels are hidden (the OS hides them until mic permission has been granted once). To switch device, call `set_setting` with path `engine.micDeviceId`.
+- **Wave W1 (window + state observability, 9 tools):** `get_window_state`, `minimize_window`, `maximize_window`, `unmaximize_window`, `bring_window_to_front`, `set_window_geometry`, `set_font_size`, `set_video_fullscreen`, `get_recording_state`.
+- **Wave W2 (archive search + bulk-delete, 3 tools):** `search_archives`, `archives_by_date_range`, `bulk_delete_archives` (YES-DELETE-N confirm guard).
+- **Wave W4/W2 cont'd (lifecycle + bulk-export, 7 tools):** `cancel_recording`, `restart_app`, `quit_app`, `set_always_on_top`, `set_opacity`, `send_notification`, `bulk_export_archives_text`.
+- **Wave W5 (recording verbs + audio devices, 3 tools):** `start_recording`, `stop_recording`, `list_audio_devices` — closes the "Hey agent, start recording" grandma-demo gap.
+- **Wave W6 (voice clone cloud submit, 1 tool):** `submit_voice_clone_to_cloud` — completes the create → submit → poll training arc.
 
-Closes the most-requested grandma-demo gap: utterances like "hey agent, start recording" and "use my AirPods" now work end-to-end through MCP without the agent having to know whether the app is currently idle.
+Companion windy-pro merges land the corresponding HTTP control-plane endpoints (PRs #143, #148-#151, #153-#155, #157-#158).
 
 ## [1.0.0] — 2026-05-20
 

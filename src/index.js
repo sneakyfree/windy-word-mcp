@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '1.4.0';
+const SERVER_VERSION = '1.5.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -918,13 +918,30 @@ server.registerTool(
 );
 
 server.registerTool(
+  'submit_voice_clone_to_cloud',
+  {
+    description:
+      'Submit a local voice clone to Windy Clone for ElevenLabs training. Idempotent on cloud_order_id: ' +
+      'if the clone has already been submitted, returns { ok: false, error: "Already submitted...", ' +
+      'cloud_order_id: <existing> } without firing a second submission. Requires the user to be signed ' +
+      'in to their Windy account (auth.token in electron-store). On success returns { ok: true, ' +
+      'order_id, status }; poll get_cloud_clone_order_status with the returned order_id for training ' +
+      'progress. Get clone ids from list_voice_clones.',
+    inputSchema: {
+      cloneId: z.string().describe('Local clone id from list_voice_clones (e.g. "vc_2026-05-21_abc123").'),
+    },
+  },
+  wrap(async ({ cloneId }) => ok(await apiPost('/clones/cloud/submit', { cloneId }, { timeoutMs: 35 * 1000 }))),
+);
+
+server.registerTool(
   'get_cloud_clone_order_status',
   {
     description:
       'Check the status of a Windy Clone cloud-training order — used after submit_voice_clone_to_cloud ' +
-      '(Phase 2 — not yet exposed as MCP) to poll for ElevenLabs training completion. Requires the user ' +
-      'to be signed in to their Windy account; returns a clean 401-shape error if not. Returns the raw ' +
-      'order body from the Windy Clone API.',
+      'to poll for ElevenLabs training completion. Requires the user to be signed in to their Windy ' +
+      'account; returns a clean 401-shape error if not. Returns the raw order body from the Windy ' +
+      'Clone API.',
     inputSchema: {
       orderId: z.string().describe('Order id returned from a previous submit_voice_clone_to_cloud call.'),
     },
