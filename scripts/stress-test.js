@@ -37,7 +37,15 @@ async function probe(name, args = {}, opts = {}) {
 }
 
 // ── Safe read-only / state-only ──
-await probe('get_platform', {}, { summary: (d) => `${d.distro} ${d.distroVersion}, ${d.displayServer}/${d.desktop}, xdotool=${d.hasXdotool} ydotool=${d.hasYdotool}` });
+const platform = await probe('get_platform', {}, { summary: (d) => `${d.distro} ${d.distroVersion}, ${d.displayServer}/${d.desktop}, xdotool=${d.hasXdotool} ydotool=${d.hasYdotool}` });
+// Capture platform for the assertions later in this file that vary by OS
+// (whitelist size, mac-only tool behavior). Linux has the largest whitelist
+// (wtype/ydotool/wl-clipboard/xdotool/ffmpeg+), macOS has cliclick+ffmpeg
+// only, Windows has ffmpeg only.
+const platformIsMac = platform?.distro === 'darwin';
+const platformIsWin = platform?.distro === 'win32';
+const platformIsLinux = !platformIsMac && !platformIsWin;
+const minInstallableTools = platformIsLinux ? 5 : platformIsMac ? 2 : 1;
 await probe('list_paste_strategies', {}, {
   summary: (d) => `${d.strategies.length} strategies, ${d.strategies.filter(s => s.availableOnThisMachine).length} available; chain=${d.defaultChain.slice(0,3).join('→')}; collision=${d.hotkeyCollisionDetected}`,
 });
@@ -51,10 +59,24 @@ await probe('get_config', {}, { summary: (d) => `${Object.keys(d || {}).length} 
 
 // ── install_dependency surface ──
 await probe('list_installable_dependencies', {}, { summary: (d) => `supported=${d.supported} distro=${d.distro} tools=${d.tools?.map(t=>t.name).join(',')}` });
-await probe('install_dependency', { tool: 'wtype', dryRun: true }, { summary: (d) => `dryRun cmd: ${d.command}` });
-await probe('install_dependency', { tool: 'wl-clipboard' }, { summary: (d) => `alreadyInstalled=${d.alreadyInstalled} ok=${d.ok}` });
-await probe('install_dependency', { tool: 'xdotool' }, { summary: (d) => `alreadyInstalled=${d.alreadyInstalled} ok=${d.ok}` });
-await probe('install_dependency', { tool: 'ydotool' }, { summary: (d) => `alreadyInstalled=${d.alreadyInstalled} ok=${d.ok}` });
+// wtype / wl-clipboard / xdotool / ydotool are all Linux-only tools. On Linux
+// we exercise their install paths (dryRun for wtype, real install attempts
+// for the others — alreadyInstalled is the success state). On non-Linux the
+// whitelist correctly rejects them with a structured "not installable" error;
+// we verify that rejection instead of the Linux install path.
+if (platformIsLinux) {
+  await probe('install_dependency', { tool: 'wtype', dryRun: true }, { summary: (d) => `dryRun cmd: ${d.command}` });
+  await probe('install_dependency', { tool: 'wl-clipboard' }, { summary: (d) => `alreadyInstalled=${d.alreadyInstalled} ok=${d.ok}` });
+  await probe('install_dependency', { tool: 'xdotool' }, { summary: (d) => `alreadyInstalled=${d.alreadyInstalled} ok=${d.ok}` });
+  await probe('install_dependency', { tool: 'ydotool' }, { summary: (d) => `alreadyInstalled=${d.alreadyInstalled} ok=${d.ok}` });
+} else {
+  for (const tool of ['wtype', 'wl-clipboard', 'xdotool', 'ydotool']) {
+    await probe('install_dependency', { tool }, {
+      check: (d, isErr) => isErr || d?.ok === false,
+      summary: (d, isErr) => isErr ? `rejected on ${platform.distro} (MCP isError)` : `rejected on ${platform.distro}: ${(d?.error || '').slice(0,60)}`,
+    });
+  }
+}
 await probe('get_install_history', { limit: 10 }, { summary: (d) => `${d.history?.length} entries; tools=${d.history?.map(h=>h.tool).join(',')}` });
 
 // ── invariant: whitelist rejects garbage ──
@@ -315,13 +337,22 @@ await probe('run_paste_injection_test', { strategy: 'ydotool_type', text: 'STRES
 
 // ── cross-platform whitelist sanity (v0.4.0) ──
 await probe('list_installable_dependencies', {}, {
-  check: (d) => d.tools && d.tools.length >= 5,
-  summary: (d) => `os=${d.os} pm=${d.packageManager} tools=${(d.tools||[]).map(t=>t.name).join(',')}`,
+  check: (d) => d.tools && d.tools.length >= minInstallableTools,
+  summary: (d) => `os=${d.os} pm=${d.packageManager} tools=${(d.tools||[]).map(t=>t.name).join(',')} (expected ≥${minInstallableTools})`,
 });
+// cliclick is macOS-only. On Linux/Windows the install should reject with a
+// structured "not installable" error; on macOS it should succeed in dryRun
+// mode (returning the brew command) OR report alreadyInstalled if cliclick
+// is already on PATH — either is a valid success state.
 await probe('install_dependency', { tool: 'cliclick', dryRun: true }, {
-  // cliclick is macOS-only — Linux should reject as "not installable on linux/fedora"
-  check: (d, isErr) => isErr || d?.ok === false,
-  summary: (d, isErr) => isErr ? `correctly rejected: ${d?.error || ''}`.slice(0,80) : `unexpected ok=${d?.ok}`,
+  check: (d, isErr) => platformIsMac ? d?.ok === true : (isErr || d?.ok === false),
+  summary: (d, isErr) => {
+    if (platformIsMac) {
+      if (d?.alreadyInstalled) return `darwin: alreadyInstalled (skipped dryRun)`;
+      return `darwin dryRun: ${d?.command || '(no command)'}`;
+    }
+    return isErr ? `correctly rejected: ${d?.error || ''}`.slice(0,80) : `unexpected ok=${d?.ok}`;
+  },
 });
 
 // ── set_paste_strategy auto (idempotent, no harm) ──
