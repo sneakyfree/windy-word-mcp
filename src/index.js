@@ -1091,6 +1091,139 @@ server.registerTool(
   }),
 );
 
+// ── UI-parity sweep (2026-05-20 OC5 audit coverage) ────────────────────
+// Thin wrappers over new control-server endpoints + new settings-catalog
+// paths added in sneakyfree/windy-pro PRs #148-#151. Closes the agent-
+// surface gaps surfaced during the full UI feature audit on OC5: every
+// Settings → About / Appearance / Bottom Panel / Analytics / Transcription
+// → Language UI control now has a dedicated MCP wrapper. set_setting
+// + get_config still work as the generic escape hatch for paths not yet
+// wrapped here.
+
+server.registerTool(
+  'get_version',
+  {
+    description:
+      'Return the running Windy Word version (app.getVersion()) plus the underlying ' +
+      'Electron and Node versions. Mirrors the "Windy Word v1.6.2" display in Settings → ' +
+      'About. Read-only and safe to call.',
+  },
+  wrap(async () => {
+    const platform = await apiGet('/platform');
+    return ok({
+      version: platform.version,
+      electronVersion: platform.electronVersion,
+      nodeVersion: platform.nodeVersion,
+    });
+  }),
+);
+
+server.registerTool(
+  'check_for_updates',
+  {
+    description:
+      'Trigger electron-updater\'s update check. Mirrors the "Check for Updates" button in ' +
+      'Settings → About. Returns immediately; the actual check runs asynchronously. Agents ' +
+      'can poll get_config lastUpdateCheck to see when it last ran. SAFE — only downloads; ' +
+      'install still requires a user-driven quitAndInstall via the in-app button.',
+  },
+  wrap(async () => ok(await apiPost('/updates/check', {}))),
+);
+
+server.registerTool(
+  'set_theme',
+  {
+    description:
+      'Switch the UI theme. "dark" / "light" force one mode; "auto" follows the OS appearance. ' +
+      'Mirrors Settings → Appearance → Theme. Persists to electron-store and propagates to ' +
+      'the renderer (light-theme body class + localStorage.windy_theme) live — no app restart.',
+    inputSchema: {
+      theme: z.enum(['dark', 'light', 'auto']).describe('Theme mode.'),
+    },
+  },
+  wrap(async ({ theme }) =>
+    ok(await apiPost('/settings/set', { path: 'appearance.theme', value: theme })),
+  ),
+);
+
+server.registerTool(
+  'set_analytics_enabled',
+  {
+    description:
+      'Opt in or out of anonymous usage analytics (engine, duration, mode, language — never ' +
+      'transcript content). Mirrors Settings → Analytics → "Help improve Windy Word". Off by ' +
+      'default. Live-applies to the renderer\'s localStorage flag.',
+    inputSchema: {
+      enabled: z.boolean().describe('true = opt in, false = opt out.'),
+    },
+  },
+  wrap(async ({ enabled }) =>
+    ok(await apiPost('/settings/set', { path: 'analytics.enabled', value: enabled })),
+  ),
+);
+
+server.registerTool(
+  'set_panel_visibility',
+  {
+    description:
+      'Configure how one of the bottom panel rows behaves in the main app: "always" pins ' +
+      'it open, "hover" reveals it when the cursor is near the bottom edge, "hidden" never ' +
+      'shows it. Mirrors Settings → Bottom Panel. "playback" and "export" default to "hover"; ' +
+      '"control" defaults to "always".',
+    inputSchema: {
+      panel: z.enum(['playback', 'export', 'control']).describe('Which row to configure.'),
+      mode: z.enum(['always', 'hover', 'hidden']).describe('Visibility behavior.'),
+    },
+  },
+  wrap(async ({ panel, mode }) =>
+    ok(await apiPost('/settings/set', { path: `bottomPanel.${panel}`, value: mode })),
+  ),
+);
+
+server.registerTool(
+  'set_language',
+  {
+    description:
+      'Set the Whisper transcription language. ISO 639-1 code (e.g. "en", "es", "fr", "ja", ' +
+      '"zh", "ar", "hi", "de", "pt", "ko", "ru", "it", "nl", "pl", "tr", "sv", "vi", "th") ' +
+      '— or "auto" to let Whisper detect per-utterance. Mirrors Settings → Transcription → ' +
+      'Language. Hot-swappable: the live Python engine reconfigures over WebSocket without ' +
+      'app restart; the new language applies on the next recording.',
+    inputSchema: {
+      language: z.string().describe('ISO 639-1 code or "auto".'),
+    },
+  },
+  wrap(async ({ language }) =>
+    ok(await apiPost('/settings/set', { path: 'engine.language', value: language })),
+  ),
+);
+
+server.registerTool(
+  'open_url',
+  {
+    description:
+      'Open an http/https URL or one of the Windy ecosystem schemes (windypro://, windychat://, ' +
+      'windyword://, windyfly://) in the user\'s default browser via Electron\'s shell.openExternal. ' +
+      'Mirrors UI buttons like "View all history in Web Portal" and the Upgrade → checkout ' +
+      'flow. Allowlisted: file://, javascript:, and other dangerous schemes are rejected with 403.',
+    inputSchema: {
+      url: z.string().describe('URL to open. Must use an allowlisted protocol.'),
+    },
+  },
+  wrap(async ({ url }) => ok(await apiPost('/open-url', { url }))),
+);
+
+server.registerTool(
+  'reset_hotkeys',
+  {
+    description:
+      'Restore all global keyboard shortcuts to their catalog defaults and re-register them. ' +
+      'Mirrors the "Reset All to Defaults" button in Settings → Keyboard Shortcuts. Returns ' +
+      'the applied bindings so the agent can confirm. Idempotent — safe to call repeatedly.',
+  },
+  wrap(async () => ok(await apiPost('/hotkeys/reset', {}))),
+);
+
 // ── actions (legacy GNOME-keybinding endpoints) ─────────────────────────
 
 const ACTION_ENDPOINTS = {
