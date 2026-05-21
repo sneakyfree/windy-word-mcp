@@ -2,6 +2,21 @@
 
 All notable changes to `windy-word-mcp`. SemVer 2.0.0.
 
+## [1.6.0] — 2026-05-21
+
+**Account / billing / plan surface.** +6 tools. Total: **104**.
+
+Closes the largest grandma-utterance gap: until now the MCP surface controlled only the local Electron app, never the account-server. With these tools an agent can answer "what plan am I on?", show purchase history, open the Stripe upgrade flow or Customer Portal, and sign the user out — all by voice, no menus.
+
+- `get_my_plan` — proxies `GET /api/v1/auth/me`. Returns identity + tier.
+- `get_billing_history` — proxies `GET /api/v1/billing/transactions`.
+- `get_billing_summary` — proxies `GET /api/v1/billing/summary`.
+- `open_upgrade_checkout(tier, billing_type)` — proxies `POST /api/v1/stripe/create-checkout-session`, then opens the URL via `shell.openExternal`. Zod-validated: tier ∈ {pro, translate, translate_pro}, billing_type ∈ {lifetime, monthly, yearly}.
+- `open_billing_portal` — proxies `POST /api/v1/stripe/create-portal-session`, then opens the URL.
+- `logout_account` — best-effort upstream `POST /api/v1/auth/logout`, then clears local `auth.token`, `auth.storageToken`, `license.tier`, `license.email`, `license.purchasedAt`, `license.expiresAt`, `license.stripeSessionId`. Safe offline.
+
+All six require sign-in (return structured `{ok:false, error:"Not signed in ..."}` with 401 when `auth.token` is missing) except `logout_account`, which is safe to call when already signed out. Companion `windy-pro` merge: PR `feat/account-mcp-billing` (adds six `/account/*` HTTP routes + `ACCOUNT_API_DEFAULT_URL` constant).
+
 ## [1.5.0] — 2026-05-21
 
 **Waves W1 → W6 — full agent-control surface.** +23 tools. Total: **95**.

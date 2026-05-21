@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '1.5.0';
+const SERVER_VERSION = '1.6.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -1580,6 +1580,100 @@ server.registerTool(
       'path "engine.micDeviceId" and the desired deviceId.',
   },
   wrap(async () => ok(await apiGet('/audio/devices'))),
+);
+
+// ── account / billing / plan ────────────────────────────────────────────
+// Thin proxies for the account-server (https://windyword.ai/api/v1/*).
+// Grandma utterances these cover:
+//   "what plan am i on"                  → get_my_plan
+//   "show me my receipts"                → get_billing_history
+//   "what does my bill look like"        → get_billing_summary
+//   "upgrade me to pro"                  → open_upgrade_checkout
+//   "manage my subscription / cancel"    → open_billing_portal
+//   "sign me out"                        → logout_account
+// All require a stored auth token (auth.token / auth.storageToken in the
+// electron-store). When the user is signed out the local control server
+// returns 401 with a structured {ok:false, error:"Not signed in ..."}.
+
+server.registerTool(
+  'get_my_plan',
+  {
+    description:
+      'Return the signed-in user\'s identity and license tier — the answer to "what plan am I on", ' +
+      '"what tier am I on", "am I a pro user", "what subscription do I have". Returns ' +
+      '{ userId, name, email, tier, devices, deviceLimit, createdAt }. Tier is one of ' +
+      '{free, pro, lifetime, team}. If the user is not signed in, returns ok:false with a ' +
+      '"Not signed in" error — surface that to the user and offer to walk them through sign-in.',
+  },
+  wrap(async () => ok(await apiGet('/account/me'))),
+);
+
+server.registerTool(
+  'get_billing_history',
+  {
+    description:
+      'Return the user\'s purchase / transaction history — the answer to "show me my receipts", ' +
+      '"what have I paid for", "list my transactions". Returns an array of transactions with ' +
+      '{ id, tier, billing_type, amount_cents, currency, created_at, stripe_session_id }. ' +
+      'Requires sign-in.',
+  },
+  wrap(async () => ok(await apiGet('/account/billing/transactions'))),
+);
+
+server.registerTool(
+  'get_billing_summary',
+  {
+    description:
+      'Return a high-level billing summary — current tier, lifetime spend, next renewal (if ' +
+      'subscribed). Answer to "what does my bill look like", "billing summary", "how much have ' +
+      'I spent on Windy Word". Requires sign-in.',
+  },
+  wrap(async () => ok(await apiGet('/account/billing/summary'))),
+);
+
+server.registerTool(
+  'open_upgrade_checkout',
+  {
+    description:
+      'Open a Stripe Checkout page in the user\'s default browser to upgrade to a paid tier. ' +
+      'Use this for "upgrade me", "I want pro", "switch me to lifetime", "buy the yearly plan". ' +
+      'Returns { ok, url, sessionId, opened } — `opened:true` means shell.openExternal launched ' +
+      'the browser; tell the user to complete checkout there. tier must be one of ' +
+      '{pro, translate, translate_pro}; billing_type must be one of {lifetime, monthly, yearly}. ' +
+      'After checkout completes the user\'s tier updates via webhook — call get_my_plan to ' +
+      'confirm. Requires sign-in.',
+    inputSchema: {
+      tier: z.enum(['pro', 'translate', 'translate_pro']).describe('Subscription tier the user wants to buy.'),
+      billing_type: z.enum(['lifetime', 'monthly', 'yearly']).describe('Billing cadence. "lifetime" is a one-time payment; "monthly"/"yearly" are subscriptions.'),
+    },
+  },
+  wrap(async ({ tier, billing_type }) => ok(await apiPost('/account/billing/checkout', { tier, billing_type }))),
+);
+
+server.registerTool(
+  'open_billing_portal',
+  {
+    description:
+      'Open the Stripe Customer Portal in the user\'s default browser. Use this for "manage my ' +
+      'subscription", "update my credit card", "cancel my plan", "view my invoices", "I want a ' +
+      'refund". Returns { ok, url, opened }. Cancellation, plan changes, and card updates all ' +
+      'happen in the portal — the user must complete those steps there. Requires sign-in AND a ' +
+      'prior purchase (account-server returns 400 if the user has never bought anything).',
+  },
+  wrap(async () => ok(await apiPost('/account/billing/portal'))),
+);
+
+server.registerTool(
+  'logout_account',
+  {
+    description:
+      'Sign the user out of their Windy account. Use this for "sign me out", "log me out", ' +
+      '"switch accounts". Best-effort upstream logout, then ALWAYS clears the local auth + ' +
+      'cached license fields (auth.token, auth.storageToken, license.tier, license.email, ' +
+      'license.purchasedAt, license.expiresAt, license.stripeSessionId). Safe to call when ' +
+      'already signed out and safe to call offline.',
+  },
+  wrap(async () => ok(await apiPost('/account/logout'))),
 );
 
 // ── actions (legacy GNOME-keybinding endpoints) ─────────────────────────
