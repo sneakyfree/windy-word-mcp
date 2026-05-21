@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '1.8.0';
+const SERVER_VERSION = '1.9.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -1762,6 +1762,41 @@ server.registerTool(
       'restart.',
   },
   wrap(async () => ok(await apiGet('/settings/history'))),
+);
+
+// ── music ducking — pause other audio for clean recording ───────────────
+// When grandma starts a recording while Spotify is playing, the music
+// ruins her transcript. These two let the agent pause other audio
+// before recording and resume it afterward — the "feels-like-magic"
+// grandma win.
+
+server.registerTool(
+  'pause_other_audio',
+  {
+    description:
+      'Pause any music or media playing in other apps (Spotify, Apple Music, browsers, VLC) so ' +
+      'it doesn\'t bleed into a recording. Use this BEFORE start_recording when the user is ' +
+      'listening to music, or whenever the user says "pause my music", "stop the music", or ' +
+      '"mute Spotify". Returns per-app `attempts` so the agent can describe what was paused. ' +
+      'Best-effort cross-platform: macOS uses AppleScript to Music + Spotify (guarded by ' +
+      '"is running"); Windows sends VK_MEDIA_PLAY_PAUSE (toggle key — same key used for ' +
+      'resume); Linux uses `playerctl pause` (covers any MPRIS-compatible player). On Linux ' +
+      'the response includes an install hint when playerctl is missing.',
+  },
+  wrap(async () => ok(await apiPost('/audio/pause-others'))),
+);
+
+server.registerTool(
+  'resume_other_audio',
+  {
+    description:
+      'Resume music or media that was paused with pause_other_audio. Use this AFTER ' +
+      'stop_recording, or when the user says "play my music again", "unpause Spotify", or ' +
+      '"resume the music". macOS resumes Music + Spotify by name; Windows toggles the media ' +
+      'key (so calling this when nothing was previously paused will START playback — be ' +
+      'mindful of that on Windows); Linux uses `playerctl play`.',
+  },
+  wrap(async () => ok(await apiPost('/audio/resume-others'))),
 );
 
 // ── actions (legacy GNOME-keybinding endpoints) ─────────────────────────

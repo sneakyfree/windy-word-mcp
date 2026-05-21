@@ -1,8 +1,8 @@
 {
   "name": "windy-word-mcp",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "mcpName": "io.github.sneakyfree/windy-word-mcp",
-  "description": "MCP server exposing Windy Word's agent-control surface as 109 typed tools (paste / hotkeys / transcription / recording verbs / audio devices / voice clones / install / Doctor / archive / translation / documents / soul-file / account+billing / TTS / settings-undo).",
+  "description": "MCP server exposing Windy Word's agent-control surface as 111 typed tools (paste / hotkeys / transcription / recording verbs / audio devices / voice clones / install / Doctor / archive / translation / documents / soul-file / account+billing / TTS / settings-undo / music-ducking).",
   "type": "module",
   "main": "src/index.js",
   "bin": {

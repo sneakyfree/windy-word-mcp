@@ -2,6 +2,17 @@
 
 All notable changes to `windy-word-mcp`. SemVer 2.0.0.
 
+## [1.9.0] — 2026-05-21
+
+**Music ducking — the feels-like-magic grandma win.** +2 tools. Total: **111**.
+
+When grandma starts recording while Spotify is playing, the music bleeds into her transcript. With these the agent can pause other audio before recording and resume it afterward, completely hands-free. Best-effort cross-platform; failures surface in a per-app `attempts` array but overall `ok:true` is returned if at least one method succeeded.
+
+- `pause_other_audio` — proxies `POST /audio/pause-others`. macOS: AppleScript to Music + Spotify (guarded by "is running"). Windows: SendKeys `{MEDIA_PLAY_PAUSE}` (toggle). Linux: `playerctl pause` (any MPRIS-compatible player; structured install hint when missing).
+- `resume_other_audio` — proxies `POST /audio/resume-others`. Same per-platform machinery in the opposite direction. Windows note: the toggle key behaves correctly for the standard record-then-resume flow, but calling resume_other_audio when nothing was previously paused will START playback — that's a Windows platform limitation, not a bug.
+
+Companion `windy-pro` merge: PR `feat/pause-other-audio` (adds combined `/audio/pause-others` + `/audio/resume-others` route).
+
 ## [1.8.0] — 2026-05-21
 
 **Settings undo + audit log — safety net for fuzzy voice.** +2 tools. Total: **109**.
