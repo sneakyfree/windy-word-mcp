@@ -2,6 +2,19 @@
 
 All notable changes to `windy-word-mcp`. SemVer 2.0.0.
 
+## [1.10.0] — 2026-05-21
+
+**Bulk clone-ingest — the "upload everything" grandma flow.** +4 tools. Total: **115**.
+
+Closes the user's natural "find all my voice memos, upload them, and make a clone" request. Until now `create_voice_clone_from_path` took one file at a time, so the agent had to N-fold the call manually with no way to first discover what was on disk. With these four the flow is two calls: `scan_folder_for_media` → confirm with the user → `bulk_ingest_to_clone(paths)`. Plus a chokidar-backed watcher for ongoing "anytime I drop a file in ~/Recordings, add it to my clone."
+
+- `scan_folder_for_media(path, recursive?)` — proxies `POST /clones/scan`. Returns per-file `{ path, name, ext, sizeBytes, modifiedAt, kind, durationSec? }` (durations via `music-metadata`) plus aggregates. Capped at 500 results; recursion depth capped at 6; perm-denied subdirs silently skipped. Read-only.
+- `bulk_ingest_to_clone(paths, namePrefix?)` — proxies `POST /clones/bulk-ingest`. Copies up to 100 audio files into the voice-samples store as separate clone entries (ElevenLabs multi-sample pattern). Returns per-file results so partial failures are visible.
+- `watch_folder_for_recordings(path, enabled, autoIngest?)` — proxies `POST /clones/watch-folder`. chokidar watcher with `ignoreInitial:true` and `awaitWriteFinish`. In-memory only — does NOT survive an app restart.
+- `list_clone_watchers` — proxies `GET /clones/watchers`. Returns each active watcher with `ingestedCount`.
+
+Companion `windy-pro` merge: PR `feat/bulk-clone-ingest` (adds `scanMediaFolder` + `bulkIngestToCloneSamples` helpers, `CLONE_WATCHERS` Map, and four new HTTP routes; new deps `chokidar@^5` + `music-metadata@^11`).
+
 ## [1.9.0] — 2026-05-21
 
 **Music ducking — the feels-like-magic grandma win.** +2 tools. Total: **111**.

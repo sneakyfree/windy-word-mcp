@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '1.9.0';
+const SERVER_VERSION = '1.10.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -1797,6 +1797,84 @@ server.registerTool(
       'mindful of that on Windows); Linux uses `playerctl play`.',
   },
   wrap(async () => ok(await apiPost('/audio/resume-others'))),
+);
+
+// ── bulk clone-ingest (upload-everything-to-make-a-clone) ───────────────
+// Closes the user's natural "find all my voice memos, upload them, and
+// make a clone" request. Until now create_voice_clone_from_path took
+// exactly one file at a time; these four turn the bulk path into 1-2
+// calls. chokidar-backed watcher auto-ingests new files as they land.
+
+server.registerTool(
+  'scan_folder_for_media',
+  {
+    description:
+      'Scan a folder for audio + video files (recursive by default). Use this when the user ' +
+      'says "find all my voice memos", "what recordings do I have in this folder", "look in my ' +
+      'Music folder", or before bulk_ingest_to_clone so the agent knows what\'s there. Returns ' +
+      'per-file { path, name, ext, sizeBytes, modifiedAt, kind, durationSec? } plus aggregates ' +
+      '(audioCount, videoCount, totalSizeBytes, totalDurationSec). Audio durations are extracted ' +
+      'via music-metadata. Capped at 500 results to prevent runaway responses (truncated:true ' +
+      'in that case); recursion depth capped at 6 to prevent symlink loops. Permission-denied ' +
+      'subdirectories are silently skipped. Read-only — no side effects.',
+    inputSchema: {
+      path: z.string().describe('Absolute or tilde-expanded folder path to scan.'),
+      recursive: z.boolean().optional().describe('Walk subdirectories. Defaults true.'),
+    },
+  },
+  wrap(async ({ path: p, recursive }) => ok(await apiPost('/clones/scan', { path: p, recursive }))),
+);
+
+server.registerTool(
+  'bulk_ingest_to_clone',
+  {
+    description:
+      'Copy a batch of audio files into the voice-samples store, creating one voice-clone entry ' +
+      'per file (ElevenLabs multi-sample training model). Use this after scan_folder_for_media ' +
+      'finds the files the user wants to clone from — typical flow: scan → confirm with user → ' +
+      'bulk_ingest_to_clone(filtered paths) → submit_voice_clone_to_cloud on each resulting ' +
+      'cloneId. Returns per-file results so partial failures are visible. Capped at 100 paths ' +
+      'per call (chunk larger sets). Audio extensions: webm, wav, mp3, ogg, m4a, flac. ' +
+      'Mismatched extensions are reported as failures within the response, not as a top-level ' +
+      'error.',
+    inputSchema: {
+      paths: z.array(z.string()).min(1).max(100).describe('Array of audio file paths to ingest. Each becomes one clone entry.'),
+      namePrefix: z.string().optional().describe('Optional name prefix. Each clone gets "${prefix} (i/N)". Defaults to "Bulk import YYYY-MM-DD".'),
+    },
+  },
+  wrap(async ({ paths, namePrefix }) => ok(await apiPost('/clones/bulk-ingest', { paths, namePrefix }))),
+);
+
+server.registerTool(
+  'watch_folder_for_recordings',
+  {
+    description:
+      'Start (enabled:true) or stop (enabled:false) a folder watcher that auto-ingests new ' +
+      'audio files as they land. Use this when the user says "watch my Voice Memos folder", ' +
+      '"anytime I drop a file in ~/Recordings, add it to my clone", or "auto-import new ' +
+      'recordings". Chokidar-backed: ignoreInitial:true so existing files don\'t trigger; ' +
+      'awaitWriteFinish so in-progress writes complete before ingest. autoIngest defaults true ' +
+      '(unsupported file types are silently skipped). Watchers are in-memory only — they do ' +
+      'NOT survive an app restart, so a long-running watch needs re-registration after every ' +
+      'launch. Calling enable on an already-watched path returns "already-watching" with the ' +
+      'existing meta.',
+    inputSchema: {
+      path: z.string().describe('Folder to watch.'),
+      enabled: z.boolean().optional().describe('true (default) starts the watcher; false stops it.'),
+      autoIngest: z.boolean().optional().describe('When true (default) auto-ingest new audio files. When false, just log detection.'),
+    },
+  },
+  wrap(async ({ path: p, enabled, autoIngest }) => ok(await apiPost('/clones/watch-folder', { path: p, enabled, autoIngest }))),
+);
+
+server.registerTool(
+  'list_clone_watchers',
+  {
+    description:
+      'List currently-active folder watchers from watch_folder_for_recordings. Returns each as ' +
+      '{ path, autoIngest, startedAt, ingestedCount }. Resets to empty on every app restart.',
+  },
+  wrap(async () => ok(await apiGet('/clones/watchers'))),
 );
 
 // ── actions (legacy GNOME-keybinding endpoints) ─────────────────────────
