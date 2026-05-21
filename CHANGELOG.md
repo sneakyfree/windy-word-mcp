@@ -2,6 +2,17 @@
 
 All notable changes to `windy-word-mcp`. SemVer 2.0.0.
 
+## [1.8.0] — 2026-05-21
+
+**Settings undo + audit log — safety net for fuzzy voice.** +2 tools. Total: **109**.
+
+Voice recognition is fuzzy. Grandma says "make the volume louder" and the agent might overshoot, or hear "darker" when she said "lighter". Until now there was no take-back: the agent wrote the value and moved on. With these two tools she can say "undo that" and the previous value snaps back through the same catalog apply path (hotkey re-register, renderer live-apply, engine hot-reload all fire correctly).
+
+- `undo_last_setting_change` — proxies `POST /settings/undo`. Pops the last entry from the in-memory change history and replays its `previousValue`. Returns 404 with a structured error when there's nothing to undo. Re-validates defensively against the catalog. Cannot undo raw `/config` writes — only catalog-validated changes via set_setting, set_theme, set_language, set_font_size, set_opacity, set_always_on_top, set_panel_visibility, set_analytics_enabled, set_hotkey, set_model.
+- `list_recent_setting_changes` — proxies `GET /settings/history`. Returns up to 50 entries with `{ path, previousValue, newValue, timestamp, source }`. History resets on app restart.
+
+Companion `windy-pro` merge: PR `feat/setting-undo` (extracts `applySettingChange` helper from the existing `/settings/set` route, adds `SETTINGS_HISTORY` ring buffer + two new routes `/settings/history` + `/settings/undo`).
+
 ## [1.7.0] — 2026-05-21
 
 **TTS round-trip — the agent talks back.** +3 tools. Total: **107**.

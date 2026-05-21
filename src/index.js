@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '1.7.0';
+const SERVER_VERSION = '1.8.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -1726,6 +1726,42 @@ server.registerTool(
       'do you have" or wants to switch the agent\'s voice.',
   },
   wrap(async () => ok(await apiGet('/tts/voices'))),
+);
+
+// ── settings: undo + audit log ──────────────────────────────────────────
+// Safety net for voice-driven setting changes. Voice recognition is fuzzy
+// — grandma says "make the volume louder" and the agent might overshoot.
+// These two let her say "undo my last change" or "what did I just change"
+// without leaving the conversation. History is in-memory, capped at 50
+// entries, reset on app restart.
+
+server.registerTool(
+  'undo_last_setting_change',
+  {
+    description:
+      'Revert the most recent catalog-validated setting change in this session. Use this when ' +
+      'the user says "undo", "undo that", "put it back", "I didn\'t mean to change that", or ' +
+      '"that was too loud, go back". Pops the last entry from the change history and replays ' +
+      'the previousValue through the same apply path as set_setting (so hotkey re-registration, ' +
+      'renderer live-apply, and engine hot-reload all fire correctly). Returns 404 with a clean ' +
+      'error when there\'s nothing to undo. Cannot undo a /config raw write — only catalog-' +
+      'validated changes (set_setting, set_theme, set_language, set_font_size, set_opacity, ' +
+      'set_always_on_top, set_panel_visibility, set_analytics_enabled, set_hotkey, set_model).',
+  },
+  wrap(async () => ok(await apiPost('/settings/undo'))),
+);
+
+server.registerTool(
+  'list_recent_setting_changes',
+  {
+    description:
+      'List the catalog-validated setting changes made in this session, oldest first. The ' +
+      'answer to "what did I just change", "what have I been changing", "show me my recent ' +
+      'changes". Each entry: { path, previousValue, newValue, timestamp, source }. Bounded by ' +
+      'a 50-entry ring buffer; oldest entries drop as new ones land. History resets on app ' +
+      'restart.',
+  },
+  wrap(async () => ok(await apiGet('/settings/history'))),
 );
 
 // ── actions (legacy GNOME-keybinding endpoints) ─────────────────────────
