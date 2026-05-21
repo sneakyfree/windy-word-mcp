@@ -1146,6 +1146,89 @@ server.registerTool(
   ),
 );
 
+// ── Window + state observability (Wave W1 — UI-parity sweep) ──────────
+// Wraps the new /window/* and /recording/state endpoints. Lets agents do
+// what the title bar buttons do (minimize / maximize / move / resize),
+// adjust font size, take a state snapshot, and poll the recording-flow
+// state without blind-polling for events. Note: on macOS the main window
+// is focusable:false (recording focus-theft defense), so bring-to-front
+// will NOT steal keyboard focus from the user's external app. That's the
+// invariant, not a bug.
+
+server.registerTool(
+  'get_window_state',
+  {
+    description:
+      'Snapshot the main window\'s current state: exists, maximized, minimized, focused, visible, ' +
+      'fullScreen, simpleFullScreen, bounds {x,y,width,height}, fontSize, opacity, alwaysOnTop. ' +
+      'Read-only. The cheapest call to find out "is the user actively using the app right now" — ' +
+      'check focused + isRecording (via get_recording_state) before doing anything intrusive.',
+  },
+  wrap(async () => ok(await apiGet('/window'))),
+);
+
+server.registerTool(
+  'minimize_window',
+  {
+    description:
+      'Minimize the main Windy Word window to the dock/taskbar. Mirrors the title-bar minimize ' +
+      'button. Idempotent — calling on an already-minimized window is a no-op.',
+  },
+  wrap(async () => ok(await apiPost('/window/minimize', {}))),
+);
+
+server.registerTool(
+  'maximize_window',
+  {
+    description:
+      'Maximize the main Windy Word window to fill the screen. Mirrors the title-bar maximize ' +
+      'button. Different from fullscreen: keeps the title bar visible and stays in the current ' +
+      'OS space. Use set_video_fullscreen for true fullscreen.',
+  },
+  wrap(async () => ok(await apiPost('/window/maximize', {}))),
+);
+
+server.registerTool(
+  'unmaximize_window',
+  {
+    description:
+      'Restore the main window from maximized to its previous size. No-op if not maximized.',
+  },
+  wrap(async () => ok(await apiPost('/window/unmaximize', {}))),
+);
+
+server.registerTool(
+  'bring_window_to_front',
+  {
+    description:
+      'Restore the window if minimized, show it if hidden, and raise it above other windows. ' +
+      'DOES NOT steal keyboard focus on macOS — the main window is focusable:false to protect ' +
+      'the recording flow from focus-theft against the user\'s external app. The window comes ' +
+      'to the visual front; input focus stays where it was. Returns {focused:false} on macOS to ' +
+      'make this explicit.',
+  },
+  wrap(async () => ok(await apiPost('/window/bring-to-front', {}))),
+);
+
+server.registerTool(
+  'set_window_geometry',
+  {
+    description:
+      'Set the main window\'s position and size in screen pixels. Updates the live window AND ' +
+      'persists to window.{x,y,width,height} so it survives restart. Useful for arranging the ' +
+      'app before a demo or moving it to a specific monitor.',
+    inputSchema: {
+      x: z.number().describe('Window x position in screen pixels.'),
+      y: z.number().describe('Window y position in screen pixels.'),
+      width: z.number().int().min(200).max(4000).describe('Window width in pixels (200-4000).'),
+      height: z.number().int().min(200).max(4000).describe('Window height in pixels (200-4000).'),
+    },
+  },
+  wrap(async ({ x, y, width, height }) =>
+    ok(await apiPost('/window/geometry', { x, y, width, height })),
+  ),
+);
+
 server.registerTool(
   'set_analytics_enabled',
   {
@@ -1222,6 +1305,48 @@ server.registerTool(
       'the applied bindings so the agent can confirm. Idempotent — safe to call repeatedly.',
   },
   wrap(async () => ok(await apiPost('/hotkeys/reset', {}))),
+);
+
+server.registerTool(
+  'set_font_size',
+  {
+    description:
+      'Set the UI font-size zoom factor (70-150%). 100 is default. Mirrors the A- / A+ buttons ' +
+      'in the Settings header. Persists to appearance.fontSize and broadcasts a font-size-changed ' +
+      'event to the renderer so the live UI updates immediately.',
+    inputSchema: {
+      percent: z.number().int().min(70).max(150).describe('Zoom percentage. Clamped to 70-150.'),
+    },
+  },
+  wrap(async ({ percent }) => ok(await apiPost('/window/font-size', { percent }))),
+);
+
+server.registerTool(
+  'set_video_fullscreen',
+  {
+    description:
+      'Toggle the main window into native OS-level fullscreen. On macOS uses setSimpleFullScreen ' +
+      '(works with the focusable:false main window — doesn\'t need key window); other platforms ' +
+      'use standard setFullScreen. Used by the History video-expand button (PR #143). For UI font ' +
+      'zoom use set_font_size; for in-window maximize use maximize_window.',
+    inputSchema: {
+      on: z.boolean().describe('true = enter fullscreen, false = exit.'),
+    },
+  },
+  wrap(async ({ on }) => ok(await apiPost('/window/video-fullscreen', { on }))),
+);
+
+server.registerTool(
+  'get_recording_state',
+  {
+    description:
+      'Return the recording-flow state: isRecording (main-process truth), pythonEngineRunning ' +
+      '(transcription backend alive), totalPasteAttempts (counter — increments after every paste ' +
+      'attempt; use to detect activity between polls). Read-only and cheap. Use this BEFORE doing ' +
+      'anything intrusive — if isRecording=true, the user is actively recording and you should ' +
+      'defer or use toggle_recording to stop them gracefully.',
+  },
+  wrap(async () => ok(await apiGet('/recording/state'))),
 );
 
 // ── actions (legacy GNOME-keybinding endpoints) ─────────────────────────
