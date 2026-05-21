@@ -1419,6 +1419,106 @@ server.registerTool(
   wrap(async ({ ids, confirm }) => ok(await apiPost('/archive/bulk-delete', { ids, confirm }))),
 );
 
+// ── Lifecycle + finishing surfaces (Wave W4 + W2 cont'd) ────────────────
+// App lifecycle, window control, notifications, bulk archive text export.
+
+server.registerTool(
+  'cancel_recording',
+  {
+    description:
+      'Cancel an in-flight recording without saving the result. Safe to call when idle (returns ' +
+      'wasRecording:false). Unlike toggle_recording which stops the recording AND triggers ' +
+      'transcribe + paste, this drops the audio entirely. Useful when the agent realizes the ' +
+      'recording was started by mistake or the user said "wait, scratch that".',
+  },
+  wrap(async () => ok(await apiPost('/recording/cancel', {}))),
+);
+
+server.registerTool(
+  'restart_app',
+  {
+    description:
+      'Relaunch Windy Word. app.relaunch() + app.exit(0). Returns 200 immediately; the actual ' +
+      'exit fires ~250ms later so this response lands. DESTRUCTIVE — closes the running app, ' +
+      'losing any in-flight recording. Get user confirmation before calling.',
+  },
+  wrap(async () => ok(await apiPost('/app/restart', {}))),
+);
+
+server.registerTool(
+  'quit_app',
+  {
+    description:
+      'Quit Windy Word cleanly. app.quit(). Returns 200 immediately; exit fires ~250ms later. ' +
+      'DESTRUCTIVE — app will not auto-restart. Get user confirmation before calling.',
+  },
+  wrap(async () => ok(await apiPost('/app/quit', {}))),
+);
+
+server.registerTool(
+  'set_always_on_top',
+  {
+    description:
+      'Toggle whether the Windy Word window stays above other windows. Mirrors Settings → ' +
+      'Appearance → Always on Top. Live update on the window + persist to ' +
+      'appearance.alwaysOnTop. Idempotent.',
+    inputSchema: {
+      on: z.boolean().describe('true = pin above all, false = normal Z-order.'),
+    },
+  },
+  wrap(async ({ on }) => ok(await apiPost('/window/always-on-top', { on }))),
+);
+
+server.registerTool(
+  'set_opacity',
+  {
+    description:
+      'Set the Windy Word window opacity (0.1 = mostly transparent, 1.0 = fully opaque). Mirrors ' +
+      'Settings → Appearance → Window Opacity. Live update on the window + persist to ' +
+      'appearance.opacity. Values outside [0.1, 1.0] are rejected.',
+    inputSchema: {
+      value: z.number().min(0.1).max(1.0).describe('Opacity 0.1-1.0.'),
+    },
+  },
+  wrap(async ({ value }) => ok(await apiPost('/window/opacity', { value }))),
+);
+
+server.registerTool(
+  'send_notification',
+  {
+    description:
+      'Show an OS-native notification via Electron\'s Notification API. Returns ok:true if ' +
+      'shown. Title is capped at 200 chars, body at 1000 chars. Pass silent:true to suppress ' +
+      'sound. Returns 500 on platforms where notifications aren\'t supported.',
+    inputSchema: {
+      title: z.string().min(1).max(200).describe('Notification title (1-200 chars).'),
+      body: z.string().max(1000).optional().describe('Notification body (up to 1000 chars).'),
+      silent: z.boolean().optional().describe('Suppress notification sound (default false).'),
+    },
+  },
+  wrap(async ({ title, body, silent }) => ok(await apiPost('/notifications/send', { title, body, silent }))),
+);
+
+server.registerTool(
+  'bulk_export_archives_text',
+  {
+    description:
+      'Export the transcript text of multiple archive entries to a directory. One file per ' +
+      'entry, named by the archive id. Format = "md" (default — with header), "txt" (plain ' +
+      'transcript), or "json" (full entry metadata + text). targetDir is created recursively ' +
+      'if missing. Per-id status returned; failures do not abort the batch. Pair with ' +
+      'search_archives or archives_by_date_range to assemble the id list.',
+    inputSchema: {
+      ids: z.array(z.string()).min(1).describe('Archive ids to export.'),
+      targetDir: z.string().describe('Output directory. Created recursively if missing.'),
+      format: z.enum(['md', 'txt', 'json']).optional().describe('Output format. Default "md".'),
+    },
+  },
+  wrap(async ({ ids, targetDir, format }) =>
+    ok(await apiPost('/archive/bulk-export-text', { ids, targetDir, ...(format ? { format } : {}) })),
+  ),
+);
+
 // ── actions (legacy GNOME-keybinding endpoints) ─────────────────────────
 
 const ACTION_ENDPOINTS = {
