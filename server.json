@@ -2,19 +2,19 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.sneakyfree/windy-word-mcp",
   "title": "Windy Word",
-  "description": "Control Windy Word voice-to-text from any MCP agent — 95 tools across 13 categories.",
+  "description": "Control Windy Word voice-to-text from any MCP agent — 115 tools across 13 categories.",
   "websiteUrl": "https://windyword.ai",
   "repository": {
     "url": "https://github.com/sneakyfree/windy-word-mcp",
     "source": "github"
   },
-  "version": "1.5.0",
+  "version": "1.10.0",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "windy-word-mcp",
-      "version": "1.5.0",
+      "version": "1.10.0",
       "transport": {
         "type": "stdio"
       },

@@ -1,0 +1,19 @@
+name: contract-test
+on:
+  push:
+    branches: [main, master, windy-main]
+  pull_request:
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: npm ci
+      - name: Enumerate tools (smoke)
+        run: npm run test:list-tools
+      - name: Contract test — tools enumerate + schemas compile
+        run: npm run test:contract

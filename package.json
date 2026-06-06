@@ -17,7 +17,8 @@
   ],
   "scripts": {
     "start": "node bin/windy-word-mcp.js",
-    "test:list-tools": "node scripts/list-tools.js"
+    "test:list-tools": "node scripts/list-tools.js",
+    "test:contract": "node scripts/contract-test.js"
   },
   "keywords": [
     "mcp",
