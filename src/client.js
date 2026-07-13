@@ -7,10 +7,34 @@
 // Everything else is the agent's problem (passed-through errors include
 // timeouts, JSON parse failures on malformed responses, etc.).
 
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
 const DEFAULT_HOST = process.env.WINDY_WORD_MCP_HOST || '127.0.0.1';
 const DEFAULT_PORT = parseInt(process.env.WINDY_WORD_MCP_PORT || '18765', 10);
 const BASE_URL = `http://${DEFAULT_HOST}:${DEFAULT_PORT}`;
 const DEFAULT_TIMEOUT_MS = parseInt(process.env.WINDY_WORD_MCP_TIMEOUT_MS || '5000', 10);
+
+// Per-install control token (windy-pro's security wall). Resolution order:
+// explicit env token → env path → the well-known install path. Read fresh
+// on every request — the file appears when the app first runs its
+// token-aware build, and may rotate; a stale cache would strand the agent
+// behind 401s that a plain retry should heal. Absent file → no header,
+// which keeps this client compatible with pre-token apps.
+const TOKEN_PATH =
+  process.env.WINDY_WORD_CONTROL_TOKEN_PATH ||
+  join(homedir(), '.windy-word', 'control.token');
+
+function readControlToken() {
+  if (process.env.WINDY_WORD_CONTROL_TOKEN) return process.env.WINDY_WORD_CONTROL_TOKEN;
+  try {
+    const t = readFileSync(TOKEN_PATH, 'utf8').trim();
+    return t || null;
+  } catch {
+    return null; // pre-token app, or app not yet run on this machine
+  }
+}
 
 const NOT_RUNNING_HINT =
   `Windy Word does not appear to be running at ${BASE_URL}. ` +
@@ -30,6 +54,8 @@ export class WindyWordClientError extends Error {
 async function request(method, path, body, opts = {}) {
   const url = `${BASE_URL}${path}`;
   const init = { method, headers: { 'content-type': 'application/json' } };
+  const token = readControlToken();
+  if (token) init.headers['authorization'] = `Bearer ${token}`;
   if (body !== undefined) init.body = JSON.stringify(body);
 
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -77,5 +103,10 @@ export const apiGet = (path, opts) => request('GET', path, undefined, opts);
 export const apiPost = (path, body, opts) => request('POST', path, body ?? {}, opts);
 
 export function describeServer() {
-  return { baseUrl: BASE_URL, timeoutMs: DEFAULT_TIMEOUT_MS };
+  return {
+    baseUrl: BASE_URL,
+    timeoutMs: DEFAULT_TIMEOUT_MS,
+    tokenPath: TOKEN_PATH,
+    tokenPresent: readControlToken() !== null,
+  };
 }
