@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { apiGet, apiPost, describeServer, WindyWordClientError } from './client.js';
 
-const SERVER_VERSION = '1.10.0';
+const SERVER_VERSION = '1.11.0';
 
 const server = new McpServer({
   name: 'windy-word',
@@ -1915,8 +1915,15 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   // Helpful diagnostic to stderr (stdout is the MCP channel).
-  const { baseUrl } = describeServer();
+  const { baseUrl, tokenPath, tokenPresent } = describeServer();
   console.error(`[windy-word-mcp ${SERVER_VERSION}] stdio transport ready, proxying to ${baseUrl}`);
+  if (!tokenPresent) {
+    console.error(
+      `[windy-word-mcp] no control token at ${tokenPath} — fine for pre-token ` +
+      `Windy Word builds; token-aware builds will answer 401 until the app has ` +
+      `run once on this machine (which mints the token).`,
+    );
+  }
 }
 
 main().catch((e) => {

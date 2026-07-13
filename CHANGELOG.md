@@ -2,6 +2,17 @@
 
 All notable changes to `windy-word-mcp`. SemVer 2.0.0.
 
+## [1.11.0] — 2026-07-13
+
+**Control-token support — companion to windy-pro's per-install bearer token (windy-pro #231).** Tool count unchanged: **115**.
+
+Windy Word's control server now requires a per-install bearer token on every route (closing the no-Origin `<img>`-GET drive-by). This release sends it automatically:
+
+- Token resolution: `WINDY_WORD_CONTROL_TOKEN` env → `WINDY_WORD_CONTROL_TOKEN_PATH` env → the well-known install path `~/.windy-word/control.token` (minted by the app on first run of a token-aware build).
+- Read fresh on every request — a token minted or rotated after this server starts is picked up without a restart; no stale-cache 401 loops.
+- **Backward compatible both ways:** against a pre-token app the header is ignored; with no token file present, no header is sent (and a one-line stderr note explains the consequences against token-aware builds).
+- `describeServer()` now reports `tokenPath` + `tokenPresent` for diagnostics.
+
 ## [1.10.0] — 2026-05-21
 
 **Bulk clone-ingest — the "upload everything" grandma flow.** +4 tools. Total: **115**.
