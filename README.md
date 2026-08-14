@@ -322,10 +322,14 @@ Agents work with opaque `arc:YYYY-MM-DD:HHMMSS.md` ids, never filesystem paths. 
 
 Known intermittent: `run_paste_injection_test` ~1-in-5 hits a Mutter focus-handoff race on Wayland+GNOME. Re-run is clean. Not a regression.
 
-## Sibling repos
+## Sibling components
 
-- [`sneakyfree/windy-pro`](https://github.com/sneakyfree/windy-pro) — the Electron app (Windy Word). Contains the control server, settings catalog, install registry, Doctor checks, paste strategies, archive scanner, voice-clone CRUD. `npm install + npm start` to run.
-- [`sneakyfree/windy-fix-me`](https://github.com/sneakyfree/windy-fix-me) — the cloud-relay Cloudflare Worker. Receives Doctor findings + platform context, returns LLM-augmented remediation via OpenRouter.
+These are private repositories — the names are here so the architecture reads clearly, not as links.
+
+- **`windy-pro`** — the Electron app (Windy Word). Contains the control server, settings catalog, install registry, Doctor checks, paste strategies, archive scanner, voice-clone CRUD.
+- **`windy-fix-me`** — the cloud-relay Cloudflare Worker. Receives Doctor findings + platform context, returns LLM-augmented remediation.
+
+This server is the public, supported interface to Windy Word. You do not need either of the above to use it — install from npm as shown at the top.
 
 ## Version history
 
