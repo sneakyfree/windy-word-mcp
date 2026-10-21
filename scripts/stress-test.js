@@ -55,7 +55,7 @@ await probe('get_paste_history', { limit: 5 }, { summary: (d) => `${d.count} ent
 await probe('list_hotkeys', {}, { summary: (d) => `${Object.keys(d.bindings || {}).length} bindings; available=${(d.available || []).join(',')}` });
 await probe('list_models', {}, { summary: (d) => `current=${d.current}, ladder=${(d.ladder || []).join(',')}` });
 await probe('get_windytune_state', {}, { summary: (d) => `enabled=${d.enabled}, model=${d.currentModel}, history=${d.historyCount}, avgRatio=${d.recentAvgRatio}` });
-await probe('get_config', {}, { summary: (d) => `${Object.keys(d || {}).length} top-level keys: ${Object.keys(d || {}).slice(0,6).join(',')}…` });
+await probe('get_config', {}, { summary: (d) => { const s = (d && d.settings) || {}; return `${Object.keys(s).length} readable setting paths: ${Object.keys(s).slice(0,6).join(', ')}`; } });
 
 // ── install_dependency surface ──
 await probe('list_installable_dependencies', {}, { summary: (d) => `supported=${d.supported} distro=${d.distro} tools=${d.tools?.map(t=>t.name).join(',')}` });

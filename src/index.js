@@ -1069,14 +1069,16 @@ server.registerTool(
   wrap(async ({ path, value }) => ok(await apiPost('/settings/set', { path, value }))),
 );
 
-// ── config (low-level, no validation — escape hatch) ────────────────────
+// ── config (Windy Word ONE WINDY TR8, windy-pro #1466) ─────────────────
 
 server.registerTool(
   'get_config',
   {
     description:
-      'Return the full electron-store config tree (every setting Windy Word has persisted). ' +
-      'Large but read-only — use this to discover what setting paths exist before set_config.',
+      'Return the settings an agent may read, by setting path: { settings: { path: value } }. ' +
+      'Values only where an agent may read them; personal, path and account values come back as ' +
+      '{ isSet, redacted: true }, and sign-in tokens, sessions and consent switches are never returned. ' +
+      'Use list_settings / describe_setting for descriptions and set_setting to change one.',
   },
   wrap(async () => ok(await apiGet('/config'))),
 );
@@ -1085,9 +1087,8 @@ server.registerTool(
   'set_config',
   {
     description:
-      'Patch the config store. Pass EITHER {path, value} for a single dotted-path write ' +
-      '(e.g. path="engine.model", value="small"), OR {patch: {...}} for a flat object of ' +
-      'dotted-path → value pairs applied in order. Changes persist immediately.',
+      'RETIRED: raw config writes are refused (they skipped validation, history and Undo, and ' +
+      'could change permission switches). Use set_setting, which validates the value and can be undone.',
     inputSchema: {
       path: z.string().optional().describe('Dotted path (e.g. "engine.model").'),
       value: z.unknown().optional().describe('Value for the single-path form.'),
@@ -1097,15 +1098,8 @@ server.registerTool(
         .describe('Object of dotted-path → value, applied in iteration order.'),
     },
   },
-  wrap(async ({ path, value, patch }) => {
-    const body = {};
-    if (path !== undefined) {
-      body.path = path;
-      body.value = value;
-    }
-    if (patch !== undefined) body.patch = patch;
-    return ok(await apiPost('/config', body));
-  }),
+  // Never calls /config: an older Windy Word still accepted a raw write there.
+  wrap(async () => ok({ ok: false, error: 'retired', use: 'set_setting' })),
 );
 
 // ── UI-parity sweep (2026-05-20 OC5 audit coverage) ────────────────────
