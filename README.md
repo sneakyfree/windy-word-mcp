@@ -140,8 +140,8 @@ Agent installs missing system tools (Linux/macOS/Windows package managers). Linu
 | `list_settings` | Catalog + current live values + available tags. Supports `?tag=X` filter |
 | `describe_setting` | Single entry + current value |
 | `set_setting` | Validate + apply + return side effects |
-| `get_config` | Full electron-store dump (low-level escape hatch) |
-| `set_config` | Patch by dotted path, no validation (low-level escape hatch) |
+| `get_config` | The settings an agent may read, by path (personal values redacted; tokens and consent never returned) |
+| `set_config` | Retired: answers `retired`, use `set_setting` |
 
 ### Settings undo (2)
 | Tool | What it does |
