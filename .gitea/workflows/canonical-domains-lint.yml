@@ -1,4 +1,6 @@
 name: canonical-domains-lint
+# Runs on the forge (Windy Git; its bridge posts windy-git/<workflow>/<job> to GitHub) since the
+# GitHub runner on Veron went (Boss RULING 2026-11-22T18:01:52Z). Same-repo PRs only.
 on:
   push:
     branches: [main, master, windy-main]
@@ -11,6 +13,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: runner-lint (hosted runners are billing-locked)
-        run: bash "$GITHUB_WORKSPACE/.github/lint/lint-runner-labels.sh" "$GITHUB_WORKSPACE/.github/workflows"
+        run: bash "$GITHUB_WORKSPACE/.github/lint/lint-runner-labels.sh" "$GITHUB_WORKSPACE/.gitea/workflows"
       - name: Run canonical-domains lint
         run: bash .github/lint/lint-canonical-domains.sh --config .github/lint/canonical-domains.json .
